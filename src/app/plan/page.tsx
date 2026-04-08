@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { useLocale } from '@/lib/locale-context';
@@ -8,6 +8,8 @@ import { useSkills } from '@/lib/skills-context';
 import { useCart } from '@/lib/cart-context';
 import { allIndustries } from '@/lib/career-map';
 import { getSkillAiDefense } from '@/lib/superposition';
+import { getToolMapEntries } from '@/lib/toolmap';
+import type { IndustryToolMapEntry } from '@/lib/toolmap/types';
 import type { CareerRole, IndustryCareerMap } from '@/lib/career-map';
 
 /* ─── i18n ─── */
@@ -19,143 +21,328 @@ const ui = {
     emptyHint: 'Go to Industries & Jobs to browse and add roles to your plan.',
     browse: 'Browse Industries & Jobs',
     skills: 'Skills to Learn',
-    skillsHint: 'Skills you need but don\'t have yet',
+    skillsHint: 'Prioritized by how many target roles need them',
     tools: 'Tools & Software',
     toolsHint: 'Industry-standard tools to master',
-    certs: 'Certifications',
-    certsHint: 'Credentials that prove your competence',
+    certs: 'Certifications & Training',
+    certsHint: 'Credentials and courses that prove your competence',
     capstone: 'Capstone Projects',
     capstoneHint: 'Build these to prove you can do the job',
     youHave: 'You have',
     youNeed: 'You need',
-    shared: 'Shared across roles',
-    roleSpecific: 'Role-specific',
     remove: 'Remove',
     totalGap: 'Total skill gap',
-    estimatedTime: 'Estimated learning time',
+    estimatedTime: 'Est. learning time',
     months: 'months',
-    priority: 'Priority',
-    high: 'High',
-    medium: 'Medium',
-    low: 'Low',
     nextStep: 'Ready to start?',
-    nextStepHint: 'See where these roles are hiring on the Market Map',
+    nextStepHint: 'See where these roles are hiring',
     goToMarket: 'View Market Map',
+    downloadPlan: 'Download My Plan',
+    downloadBrief: 'Download Task Brief',
+    aiLoading: 'AI is generating recommendations...',
+    aiPowered: 'AI-generated recommendations',
+    free: 'FREE',
+    essential: 'Essential',
+    recommended: 'Recommended',
+    emerging: 'Emerging',
+    githubPath: 'GitHub Learning Path',
+    hours: 'h',
+    difficulty: 'Difficulty',
+    deliverables: 'Deliverables',
+    provesTo: 'Proves to employer',
+    industryContext: 'Industry context',
+    expandAll: 'Expand all',
+    collapseAll: 'Collapse all',
   },
   de: {
     title: 'Wie komme ich dahin?',
-    sub: 'Dein personalisierter Aktionsplan basierend auf deinen Zielrollen',
+    sub: 'Dein personalisierter Aktionsplan',
     empty: 'Noch keine Zielrollen ausgewählt',
-    emptyHint: 'Gehe zu Branchen & Jobs, um Rollen zu deinem Plan hinzuzufügen.',
+    emptyHint: 'Gehe zu Branchen & Jobs, um Rollen hinzuzufügen.',
     browse: 'Branchen & Jobs durchsuchen',
     skills: 'Zu lernende Skills',
-    skillsHint: 'Skills die du brauchst, aber noch nicht hast',
+    skillsHint: 'Priorisiert nach Anzahl der Zielrollen',
     tools: 'Tools & Software',
     toolsHint: 'Branchenstandard-Tools',
-    certs: 'Zertifizierungen',
-    certsHint: 'Nachweise deiner Kompetenz',
+    certs: 'Zertifizierungen & Training',
+    certsHint: 'Nachweise und Kurse',
     capstone: 'Praxisprojekte',
     capstoneHint: 'Projekte die beweisen, dass du den Job kannst',
     youHave: 'Du hast',
     youNeed: 'Du brauchst',
-    shared: 'Rollenübergreifend',
-    roleSpecific: 'Rollenspezifisch',
     remove: 'Entfernen',
-    totalGap: 'Skill-Lücke gesamt',
+    totalGap: 'Skill-Lücke',
     estimatedTime: 'Geschätzte Lernzeit',
     months: 'Monate',
-    priority: 'Priorität',
-    high: 'Hoch',
-    medium: 'Mittel',
-    low: 'Niedrig',
-    nextStep: 'Bereit loszulegen?',
-    nextStepHint: 'Sieh wo diese Rollen eingestellt werden',
+    nextStep: 'Bereit?',
+    nextStepHint: 'Sieh wo diese Rollen gesucht werden',
     goToMarket: 'Marktkarte ansehen',
+    downloadPlan: 'Plan herunterladen',
+    downloadBrief: 'Aufgabenstellung herunterladen',
+    aiLoading: 'KI generiert Empfehlungen...',
+    aiPowered: 'KI-generierte Empfehlungen',
+    free: 'KOSTENLOS',
+    essential: 'Essentiell',
+    recommended: 'Empfohlen',
+    emerging: 'Aufkommend',
+    githubPath: 'GitHub-Lernpfad',
+    hours: 'Std',
+    difficulty: 'Schwierigkeit',
+    deliverables: 'Liefergegenstände',
+    provesTo: 'Beweist dem Arbeitgeber',
+    industryContext: 'Branchenkontext',
+    expandAll: 'Alle aufklappen',
+    collapseAll: 'Alle zuklappen',
   },
   zh: {
     title: '怎么去？',
-    sub: '基于你选择的目标岗位，为你定制的行动计划',
+    sub: '基于目标岗位的个人行动计划',
     empty: '还没有选择目标岗位',
     emptyHint: '去"行业与岗位"页面浏览，将感兴趣的岗位加入计划。',
     browse: '去看行业与岗位',
     skills: '需要学习的技能',
-    skillsHint: '你需要但尚未掌握的技能',
+    skillsHint: '按目标岗位需求优先排序',
     tools: '工具与软件',
     toolsHint: '行业标准工具，掌握后立刻可用',
-    certs: '认证证书',
-    certsHint: '能证明你能力的权威认证',
+    certs: '认证与培训',
+    certsHint: '能证明你能力的权威认证和课程',
     capstone: '实战项目',
     capstoneHint: '做完这些项目，简历上多一行硬实力',
     youHave: '已具备',
     youNeed: '需要补上',
-    shared: '多岗位通用',
-    roleSpecific: '岗位特有',
     remove: '移除',
-    totalGap: '技能缺口总数',
+    totalGap: '技能缺口',
     estimatedTime: '预估学习时间',
     months: '个月',
-    priority: '优先级',
-    high: '高',
-    medium: '中',
-    low: '低',
     nextStep: '准备好了吗？',
     nextStepHint: '去市场地图看看这些岗位在哪里招聘',
     goToMarket: '查看市场地图',
+    downloadPlan: '下载我的学习计划',
+    downloadBrief: '下载任务书',
+    aiLoading: 'AI正在生成推荐...',
+    aiPowered: 'AI生成的推荐',
+    free: '免费',
+    essential: '必备',
+    recommended: '推荐',
+    emerging: '新兴',
+    githubPath: 'GitHub学习路径',
+    hours: '小时',
+    difficulty: '难度',
+    deliverables: '交付物',
+    provesTo: '向雇主证明',
+    industryContext: '行业背景',
+    expandAll: '全部展开',
+    collapseAll: '全部收起',
   },
 };
 
-/* ─── Known tools/certs mapping from skill names ─── */
-const SKILL_TOOLS: Record<string, string[]> = {
-  'FMEA': ['APIS IQ-RM', 'Plato SCIO', 'Relyence FMEA'],
-  'SPC': ['Minitab', 'JMP', 'Q-DAS'],
-  'CATIA': ['CATIA V5/V6', 'Dassault 3DEXPERIENCE'],
-  'SolidWorks': ['SolidWorks Premium', 'SolidWorks Simulation'],
-  'Python': ['VS Code', 'Jupyter Notebook', 'PyCharm'],
-  'SQL': ['MySQL Workbench', 'DBeaver', 'pgAdmin'],
-  'Power BI': ['Power BI Desktop', 'DAX Studio'],
-  'MATLAB': ['MATLAB', 'Simulink'],
-  'ANSYS': ['ANSYS Workbench', 'ANSYS Fluent'],
-  'AUTOSAR': ['Vector DaVinci', 'ETAS ISOLAR'],
-  'PLC': ['Siemens TIA Portal', 'Codesys', 'Allen-Bradley Studio 5000'],
-  'CANoe': ['Vector CANoe', 'CAPL scripting'],
-  'SAP': ['SAP S/4HANA', 'SAP QM Module'],
-  'IATF 16949': ['TÜV certification portal', 'SAP QM'],
-  'Lean': ['Value Stream Mapping tools', 'Miro'],
-  'Six Sigma': ['Minitab', 'JMP', 'SigmaXL'],
-  'GD&T': ['GD&T Trainer', 'eMachineShop'],
-  'DOORS': ['IBM DOORS', 'Polarion'],
-  'ISO 13485': ['Greenlight Guru', 'MasterControl'],
-};
+/* ─── AI Suggestion types ─── */
+interface AISuggestion {
+  tools?: { name: string; free?: boolean; note?: string }[];
+  training?: { name: string; platform: string; price: string; url?: string }[];
+  github?: { repo: string; desc: string; hours: number }[];
+  capstone?: { title: string; title_zh: string; difficulty: string; hours: number; deliverables: string[]; proves: string };
+}
 
-const SKILL_CERTS: Record<string, { name: string; provider: string; est_cost: string }[]> = {
-  'FMEA': [{ name: 'VDA FMEA Moderator', provider: 'VDA QMC', est_cost: '€800-1500' }],
-  'IATF 16949': [{ name: 'IATF 16949 Lead Auditor', provider: 'TÜV/DEKRA', est_cost: '€1500-3000' }],
-  'Six Sigma': [
-    { name: 'Six Sigma Green Belt', provider: 'ASQ', est_cost: '$400-600' },
-    { name: 'Six Sigma Black Belt', provider: 'ASQ', est_cost: '$600-900' },
-  ],
-  'PLC': [{ name: 'Siemens Certified Professional', provider: 'Siemens SITRAIN', est_cost: '€1000-2000' }],
-  'Python': [{ name: 'PCAP – Python Associate', provider: 'Python Institute', est_cost: '$295' }],
-  'AUTOSAR': [{ name: 'AUTOSAR Certified Professional', provider: 'AUTOSAR', est_cost: '€500-1000' }],
-  'SAP': [{ name: 'SAP Certified Application Associate', provider: 'SAP', est_cost: '$550' }],
-  'ISO 13485': [{ name: 'ISO 13485 Lead Auditor', provider: 'BSI/TÜV', est_cost: '€1500-2500' }],
-  'Lean': [{ name: 'Lean Practitioner', provider: 'SME/AME', est_cost: '$300-500' }],
-  'Power BI': [{ name: 'PL-300 Power BI Analyst', provider: 'Microsoft', est_cost: '$165' }],
-};
+/* ─── Skill Detail Card — shows toolmap or AI data for one skill ─── */
+function SkillDetailCard({ skill, toolmapEntries, aiSuggestion, locale, c, industryId }: {
+  skill: string;
+  toolmapEntries: IndustryToolMapEntry[];
+  aiSuggestion?: AISuggestion;
+  locale: string;
+  c: typeof ui.en;
+  industryId?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isZh = locale === 'zh';
+  const entry = toolmapEntries[0]; // primary entry
+  const hasData = entry || aiSuggestion;
+  const isAI = !entry && !!aiSuggestion;
+  const aiDefense = getSkillAiDefense(skill);
 
-const SKILL_CAPSTONES: Record<string, { title: string; title_zh: string; hours: number; deliverable: string }> = {
-  'FMEA': { title: 'FMEA for EV Battery Assembly', title_zh: '电池装配过程FMEA分析', hours: 20, deliverable: 'GitHub repo + report' },
-  'SPC': { title: 'SPC Dashboard for Manufacturing', title_zh: '制造过程SPC控制看板', hours: 15, deliverable: 'Python dashboard + GitHub' },
-  'Python': { title: 'Manufacturing Data Pipeline', title_zh: '制造业数据自动化流水线', hours: 25, deliverable: 'GitHub repo + demo' },
-  'PLC': { title: 'PLC-Controlled Sorting System', title_zh: 'PLC控制分拣系统仿真', hours: 30, deliverable: 'TIA Portal project + video' },
-  'CATIA': { title: 'Automotive Part Design Portfolio', title_zh: '汽车零件设计作品集', hours: 40, deliverable: '3D models + technical drawings' },
-  'CANoe': { title: 'CAN Bus Data Logger & Analyzer', title_zh: 'CAN总线数据记录分析器', hours: 20, deliverable: 'Python tool + GitHub' },
-  'Six Sigma': { title: 'DMAIC Project on Defect Reduction', title_zh: 'DMAIC缺陷减少改善项目', hours: 30, deliverable: 'Full DMAIC report + presentation' },
-  'Lean': { title: 'Value Stream Map Optimization', title_zh: '价值流图优化改善报告', hours: 15, deliverable: 'VSM before/after + savings calculation' },
-  'AUTOSAR': { title: 'AUTOSAR SWC Integration Demo', title_zh: 'AUTOSAR软件组件集成演示', hours: 35, deliverable: 'Working SWC + documentation' },
-};
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+      {/* Header — always visible */}
+      <button onClick={() => hasData && setExpanded(!expanded)}
+        className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors text-left">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <span className="text-sm font-semibold text-slate-900 truncate">{skill}</span>
+          {aiDefense >= 10 && (
+            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+              🛡-{aiDefense}%
+            </span>
+          )}
+          {isAI && (
+            <span className="text-[10px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 shrink-0">
+              AI
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {entry && (
+            <span className="text-[10px] text-slate-400">
+              {entry.tools.length} tools · {entry.github_path.length} repos
+            </span>
+          )}
+          {hasData && (
+            <span className={`text-xs transition-transform ${expanded ? 'rotate-180' : ''}`}>▼</span>
+          )}
+        </div>
+      </button>
 
-/* ─── Path Verification (Expert Feedback) ─── */
+      {/* Expanded detail */}
+      {expanded && hasData && (
+        <div className="px-4 pb-4 space-y-4 border-t border-slate-100">
+          {/* Industry context */}
+          {entry?.industry_context && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+              <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-1">{c.industryContext}</div>
+              <p className="text-xs text-amber-900 leading-relaxed">
+                {isZh ? entry.industry_context_zh : entry.industry_context}
+              </p>
+            </div>
+          )}
+
+          {/* Tools */}
+          {(entry?.tools || aiSuggestion?.tools) && (
+            <div>
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{c.tools}</div>
+              <div className="space-y-1.5">
+                {(entry?.tools || []).map(tool => (
+                  <div key={tool.name} className="flex items-center justify-between py-1.5 px-3 bg-slate-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                        tool.tier === 'essential' ? 'bg-red-100 text-red-700' :
+                        tool.tier === 'recommended' ? 'bg-blue-100 text-blue-700' :
+                        'bg-purple-100 text-purple-700'
+                      }`}>
+                        {c[tool.tier]}
+                      </span>
+                      <span className="text-xs font-medium text-slate-800">{tool.name}</span>
+                      <span className="text-[10px] text-slate-400">{tool.vendor}</span>
+                    </div>
+                    {tool.free_tier && (
+                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                        {c.free} {tool.free_tier_note ? `· ${tool.free_tier_note}` : ''}
+                      </span>
+                    )}
+                  </div>
+                ))}
+                {(aiSuggestion?.tools || []).map(tool => (
+                  <div key={tool.name} className="flex items-center justify-between py-1.5 px-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <span className="text-xs font-medium text-slate-800">{tool.name}</span>
+                    {tool.free && <span className="text-[10px] font-bold text-emerald-600">{c.free}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Training */}
+          {(entry?.training || aiSuggestion?.training) && (
+            <div>
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{c.certs}</div>
+              <div className="space-y-1.5">
+                {(entry?.training || []).map(t => (
+                  <div key={t.name} className="py-2 px-3 bg-amber-50 border border-amber-100 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-800">{isZh ? t.name_zh : t.name}</span>
+                      <span className="text-xs font-mono text-amber-700">{t.price_range}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-slate-400">{t.format}</span>
+                      {t.certification && <span className="text-[10px] text-blue-600">🏅 {t.certification}</span>}
+                      <span className="text-[10px] text-slate-400">{t.language.join('/')}</span>
+                    </div>
+                  </div>
+                ))}
+                {(aiSuggestion?.training || []).map(t => (
+                  <div key={t.name} className="py-2 px-3 bg-blue-50 border border-blue-100 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-800">{t.name}</span>
+                      <span className="text-xs font-mono text-blue-700">{t.price}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400">{t.platform}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* GitHub Path */}
+          {(entry?.github_path || aiSuggestion?.github) && (
+            <div>
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{c.githubPath}</div>
+              <div className="space-y-1.5">
+                {(entry?.github_path || []).sort((a, b) => a.order - b.order).map(step => (
+                  <div key={step.repo_name} className="flex items-center gap-3 py-2 px-3 bg-slate-50 rounded-lg">
+                    <span className="text-xs font-bold text-blue-600 bg-blue-100 w-6 h-6 rounded-full flex items-center justify-center shrink-0">
+                      {step.order}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-slate-800 truncate">{step.repo_name} ⭐{step.stars}</div>
+                      <div className="text-[10px] text-slate-500">{isZh ? step.what_to_learn_zh : step.what_to_learn}</div>
+                    </div>
+                    <span className="text-[10px] text-slate-400 shrink-0">~{step.estimated_hours}{c.hours}</span>
+                  </div>
+                ))}
+                {(aiSuggestion?.github || []).map(g => (
+                  <div key={g.repo} className="flex items-center gap-3 py-2 px-3 bg-blue-50 rounded-lg border border-blue-100">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-slate-800 truncate">{g.repo}</div>
+                      <div className="text-[10px] text-slate-500">{g.desc}</div>
+                    </div>
+                    <span className="text-[10px] text-slate-400 shrink-0">~{g.hours}{c.hours}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Capstone */}
+          {(entry?.capstone || aiSuggestion?.capstone) && (
+            <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+              <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-1">🎯 {c.capstone}</div>
+              {entry?.capstone && (
+                <>
+                  <div className="text-sm font-semibold text-slate-900 mb-1">
+                    {isZh ? entry.capstone.title_zh : entry.capstone.title}
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-[10px] text-slate-500 mb-2">
+                    <span>{c.difficulty}: {entry.capstone.difficulty}</span>
+                    <span>⏱ {entry.capstone.time_hours}{c.hours}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-600 mb-1">
+                    <span className="font-semibold">{c.deliverables}:</span> {isZh ? entry.capstone.deliverables_zh.join('、') : entry.capstone.deliverables.join(', ')}
+                  </div>
+                  <div className="text-[10px] text-indigo-700 font-medium">
+                    {c.provesTo}: {isZh ? entry.capstone.proves_to_employer_zh : entry.capstone.proves_to_employer}
+                  </div>
+                </>
+              )}
+              {!entry?.capstone && aiSuggestion?.capstone && (
+                <>
+                  <div className="text-sm font-semibold text-slate-900 mb-1">
+                    {isZh ? aiSuggestion.capstone.title_zh : aiSuggestion.capstone.title}
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-[10px] text-slate-500 mb-2">
+                    <span>{c.difficulty}: {aiSuggestion.capstone.difficulty}</span>
+                    <span>⏱ {aiSuggestion.capstone.hours}{c.hours}</span>
+                  </div>
+                  <div className="text-[10px] text-indigo-700 font-medium">
+                    {c.provesTo}: {aiSuggestion.capstone.proves}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Path Verification ─── */
 function PathVerification({ locale }: { locale: string }) {
   const isZh = locale === 'zh';
   const [vote, setVote] = useState<'up' | 'down' | null>(null);
@@ -163,7 +350,6 @@ function PathVerification({ locale }: { locale: string }) {
   const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = useCallback(() => {
-    // Store to localStorage for now — future: send to Supabase
     try {
       const existing = JSON.parse(localStorage.getItem('careerlens_feedback') || '[]');
       existing.push({ vote, feedback, timestamp: new Date().toISOString() });
@@ -177,10 +363,7 @@ function PathVerification({ locale }: { locale: string }) {
       <div className="mt-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-center">
         <div className="text-2xl mb-2">✓</div>
         <p className="text-sm font-medium text-emerald-800">
-          {isZh ? '感谢你的反馈！你的行业经验让路径更精准。' : 'Thanks! Your industry expertise makes paths more accurate.'}
-        </p>
-        <p className="text-[10px] text-emerald-600 mt-1">
-          {isZh ? '未来此功能将成为"专家积分系统"的一部分' : 'This will become part of the Expert Token system'}
+          {isZh ? '感谢你的反馈！' : 'Thanks for your feedback!'}
         </p>
       </div>
     );
@@ -188,54 +371,129 @@ function PathVerification({ locale }: { locale: string }) {
 
   return (
     <div className="mt-6 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2 mb-3">
         <span className="text-lg">🔍</span>
         <h3 className="text-sm font-bold text-slate-900">
           {isZh ? '这个路径准确吗？' : 'Is this path accurate?'}
         </h3>
-        <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-          {isZh ? 'AI生成' : 'AI-generated'}
-        </span>
       </div>
-      <p className="text-xs text-slate-500 mb-3">
-        {isZh
-          ? '如果你是资深工程师，你的反馈将帮助我们改进路径推荐（未来可获得专家积分）'
-          : 'If you\'re a senior engineer, your feedback improves path recommendations (future: earn Expert Tokens)'}
-      </p>
       <div className="flex items-center gap-3 mb-3">
         <button onClick={() => setVote('up')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg border text-sm transition-all ${
             vote === 'up' ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-emerald-300'
           }`}>
-          👍 {isZh ? '路径合理' : 'Path looks right'}
+          👍 {isZh ? '路径合理' : 'Looks right'}
         </button>
         <button onClick={() => setVote('down')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-lg border text-sm transition-all ${
             vote === 'down' ? 'bg-red-50 border-red-300 text-red-700' : 'border-slate-200 text-slate-500 hover:border-red-300'
           }`}>
-          👎 {isZh ? '需要改进' : 'Needs improvement'}
+          👎 {isZh ? '需要改进' : 'Needs work'}
         </button>
       </div>
       {vote === 'down' && (
         <textarea value={feedback} onChange={e => setFeedback(e.target.value)}
-          placeholder={isZh ? '哪里不对？例如："ROS2不需要先学C++，直接Python更快"' : 'What\'s wrong? e.g., "ROS2 doesn\'t need C++ first, Python is faster"'}
+          placeholder={isZh ? '哪里不对？' : "What's wrong?"}
           className="w-full h-20 p-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-400 resize-none mb-3" />
       )}
       {vote && (
         <button onClick={handleSubmit}
           className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
-          {isZh ? '提交反馈' : 'Submit feedback'}
+          {isZh ? '提交' : 'Submit'}
         </button>
       )}
     </div>
   );
 }
 
+/* ─── Plan Download Generator ─── */
+function generatePlanMarkdown(
+  resolvedRoles: { role: CareerRole; industry: IndustryCareerMap }[],
+  analysis: { allMissing: Set<string>; allHave: Set<string>; prioritized: string[]; skillRoleCount: Map<string, number> },
+  toolmapData: Map<string, IndustryToolMapEntry[]>,
+  isZh: boolean,
+): string {
+  const date = new Date().toISOString().split('T')[0];
+  let md = `# ${isZh ? '个人职业发展计划' : 'Personal Career Development Plan'}\n`;
+  md += `${isZh ? '生成日期' : 'Generated'}: ${date} | CareerLens\n\n`;
+
+  md += `## ${isZh ? '目标岗位' : 'Target Roles'}\n\n`;
+  for (const { role, industry } of resolvedRoles) {
+    md += `- **${isZh ? role.title_zh : role.title}** (${isZh ? industry.name_zh : industry.name})\n`;
+  }
+
+  md += `\n## ${isZh ? '能力评估' : 'Skill Assessment'}\n\n`;
+  md += `- ${isZh ? '已具备' : 'You have'}: ${analysis.allHave.size} ${isZh ? '项技能' : 'skills'}\n`;
+  md += `- ${isZh ? '需要补上' : 'You need'}: ${analysis.allMissing.size} ${isZh ? '项技能' : 'skills'}\n\n`;
+
+  md += `## ${isZh ? '学习路径（按优先级）' : 'Learning Path (by priority)'}\n\n`;
+  for (const skill of analysis.prioritized) {
+    const roleCount = analysis.skillRoleCount.get(skill) || 0;
+    const aiDef = getSkillAiDefense(skill);
+    md += `### ${skill}`;
+    if (roleCount > 1) md += ` (${roleCount} ${isZh ? '岗位需要' : 'roles need this'})`;
+    if (aiDef >= 10) md += ` 🛡AI-${aiDef}%`;
+    md += '\n\n';
+
+    const entries = toolmapData.get(skill);
+    if (entries && entries[0]) {
+      const e = entries[0];
+      if (e.industry_context) {
+        md += `> ${isZh ? e.industry_context_zh : e.industry_context}\n\n`;
+      }
+      if (e.tools.length > 0) {
+        md += `**${isZh ? '工具' : 'Tools'}:**\n`;
+        for (const t of e.tools) {
+          md += `- ${t.name} (${t.vendor})${t.free_tier ? ` — ${isZh ? '有免费版' : 'free tier available'}` : ''}\n`;
+        }
+        md += '\n';
+      }
+      if (e.training.length > 0) {
+        md += `**${isZh ? '培训' : 'Training'}:**\n`;
+        for (const t of e.training) {
+          md += `- ${isZh ? t.name_zh : t.name} | ${t.price_range} | ${t.format}\n`;
+        }
+        md += '\n';
+      }
+      if (e.github_path.length > 0) {
+        md += `**GitHub ${isZh ? '学习路径' : 'Path'}:**\n`;
+        for (const g of e.github_path.sort((a, b) => a.order - b.order)) {
+          md += `${g.order}. ${g.repo_name} ⭐${g.stars} (~${g.estimated_hours}h) — ${isZh ? g.what_to_learn_zh : g.what_to_learn}\n`;
+        }
+        md += '\n';
+      }
+      if (e.capstone) {
+        md += `**${isZh ? '实战项目' : 'Capstone'}:** ${isZh ? e.capstone.title_zh : e.capstone.title}\n`;
+        md += `- ${isZh ? '难度' : 'Difficulty'}: ${e.capstone.difficulty} | ⏱ ${e.capstone.time_hours}h\n`;
+        md += `- ${isZh ? '交付物' : 'Deliverables'}: ${isZh ? e.capstone.deliverables_zh.join('、') : e.capstone.deliverables.join(', ')}\n`;
+        md += `- ${isZh ? '向雇主证明' : 'Proves'}: ${isZh ? e.capstone.proves_to_employer_zh : e.capstone.proves_to_employer}\n\n`;
+      }
+    } else {
+      md += `${isZh ? '（暂无详细数据，建议搜索相关课程）' : '(No detailed data yet — search for related courses)'}\n\n`;
+    }
+  }
+
+  md += `---\n${isZh ? '由 CareerLens 职业透镜生成' : 'Generated by CareerLens'} | https://webapp-ten-puce.vercel.app\n`;
+  return md;
+}
+
+function downloadMarkdown(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ─── Types ─── */
 interface ResolvedRole {
   role: CareerRole;
   industry: IndustryCareerMap;
 }
 
+/* ─── Main Page ─── */
 export default function PlanPage() {
   const { locale } = useLocale();
   const { userSkills } = useSkills();
@@ -244,7 +502,12 @@ export default function PlanPage() {
   const c = ui[locale];
   const isZh = locale === 'zh';
 
-  // Resolve cart items to actual role/industry objects
+  // AI suggestions state
+  const [aiSuggestions, setAiSuggestions] = useState<Record<string, AISuggestion>>({});
+  const [aiLoading, setAiLoading] = useState(false);
+  const [allExpanded, setAllExpanded] = useState(false);
+
+  // Resolve cart → roles
   const resolvedRoles = useMemo((): ResolvedRole[] => {
     return cart.map(item => {
       const industry = allIndustries.find(i => i.id === item.industryId);
@@ -254,13 +517,12 @@ export default function PlanPage() {
     }).filter((r): r is ResolvedRole => r !== null);
   }, [cart]);
 
-  // Aggregate all skills needed across all target roles
+  // Analyze skill gaps
   const analysis = useMemo(() => {
     const allNeeded = new Set<string>();
     const allHave = new Set<string>();
     const allMissing = new Set<string>();
-    const skillRoleCount = new Map<string, number>(); // how many roles need this skill
-
+    const skillRoleCount = new Map<string, number>();
     const userLower = userSkills.map(s => s.toLowerCase());
 
     for (const { role } of resolvedRoles) {
@@ -277,39 +539,76 @@ export default function PlanPage() {
       }
     }
 
-    // Sort missing skills by priority (how many roles need them)
     const prioritized = [...allMissing].sort((a, b) => (skillRoleCount.get(b) || 0) - (skillRoleCount.get(a) || 0));
-
     return { allNeeded, allHave, allMissing, prioritized, skillRoleCount };
   }, [resolvedRoles, userSkills]);
 
-  // Aggregate tools, certs, capstones from missing skills
-  const tools = useMemo(() => {
-    const result: { skill: string; tools: string[] }[] = [];
+  // Lookup toolmap for each missing skill
+  const toolmapData = useMemo(() => {
+    const result = new Map<string, IndustryToolMapEntry[]>();
+    const primaryIndustry = resolvedRoles[0]?.industry.id;
     for (const skill of analysis.prioritized) {
-      const t = Object.entries(SKILL_TOOLS).find(([k]) => skill.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(skill.toLowerCase()));
-      if (t) result.push({ skill, tools: t[1] });
+      const entries = getToolMapEntries(skill, primaryIndustry);
+      if (entries.length > 0) {
+        result.set(skill, entries);
+      }
     }
     return result;
-  }, [analysis.prioritized]);
+  }, [analysis.prioritized, resolvedRoles]);
 
-  const certs = useMemo(() => {
-    const result: { skill: string; certs: { name: string; provider: string; est_cost: string }[] }[] = [];
-    for (const skill of analysis.prioritized) {
-      const c = Object.entries(SKILL_CERTS).find(([k]) => skill.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(skill.toLowerCase()));
-      if (c) result.push({ skill, certs: c[1] });
-    }
-    return result;
-  }, [analysis.prioritized]);
+  // Find skills NOT covered by toolmap → request AI backfill
+  const uncoveredSkills = useMemo(() => {
+    return analysis.prioritized.filter(s => !toolmapData.has(s));
+  }, [analysis.prioritized, toolmapData]);
 
-  const capstones = useMemo(() => {
-    const result: { skill: string; project: typeof SKILL_CAPSTONES[string] }[] = [];
-    for (const skill of analysis.prioritized) {
-      const c = Object.entries(SKILL_CAPSTONES).find(([k]) => skill.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(skill.toLowerCase()));
-      if (c) result.push({ skill, project: c[1] });
-    }
-    return result;
-  }, [analysis.prioritized]);
+  // AI backfill: fetch suggestions for uncovered skills
+  useEffect(() => {
+    if (uncoveredSkills.length === 0) return;
+
+    // Check localStorage cache first
+    const cacheKey = `careerlens_ai_suggestions`;
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey) || '{}');
+      const allCached = uncoveredSkills.every(s => cached[s]);
+      if (allCached) {
+        setAiSuggestions(cached);
+        return;
+      }
+    } catch { /* ignore */ }
+
+    // Fetch from AI
+    const skillsToFetch = uncoveredSkills.filter(s => !aiSuggestions[s]);
+    if (skillsToFetch.length === 0) return;
+
+    setAiLoading(true);
+    const industry = resolvedRoles[0]?.industry.name || 'Manufacturing';
+
+    fetch('/api/plan-suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skills: skillsToFetch, industry }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.suggestions) {
+          setAiSuggestions(prev => {
+            const merged = { ...prev, ...data.suggestions };
+            // Cache to localStorage
+            try { localStorage.setItem(cacheKey, JSON.stringify(merged)); } catch { /* ignore */ }
+            return merged;
+          });
+        }
+      })
+      .catch(e => console.warn('AI plan suggestions failed:', e))
+      .finally(() => setAiLoading(false));
+  }, [uncoveredSkills.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Download handler
+  const handleDownload = useCallback(() => {
+    const md = generatePlanMarkdown(resolvedRoles, analysis, toolmapData, isZh);
+    const filename = isZh ? `CareerLens_学习计划_${new Date().toISOString().split('T')[0]}.md` : `CareerLens_Plan_${new Date().toISOString().split('T')[0]}.md`;
+    downloadMarkdown(md, filename);
+  }, [resolvedRoles, analysis, toolmapData, isZh]);
 
   // Empty state
   if (resolvedRoles.length === 0) {
@@ -330,18 +629,27 @@ export default function PlanPage() {
   }
 
   const estimatedMonths = Math.max(1, Math.round(analysis.allMissing.size * 0.5));
+  const toolmapCoverage = analysis.prioritized.filter(s => toolmapData.has(s)).length;
+  const aiCoverage = uncoveredSkills.filter(s => aiSuggestions[s]).length;
+  const totalCoverage = toolmapCoverage + aiCoverage;
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
       <main className="max-w-5xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-1">{c.title}</h1>
-          <p className="text-sm text-slate-500">{c.sub}</p>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-1">{c.title}</h1>
+            <p className="text-sm text-slate-500">{c.sub}</p>
+          </div>
+          <button onClick={handleDownload}
+            className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-colors shadow-sm">
+            📥 {c.downloadPlan}
+          </button>
         </div>
 
-        {/* Selected roles strip */}
+        {/* Selected roles + stats */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-6 shadow-sm">
           <div className="flex flex-wrap gap-2">
             {resolvedRoles.map(({ role, industry }) => (
@@ -352,173 +660,96 @@ export default function PlanPage() {
               </div>
             ))}
           </div>
-          {/* Summary stats */}
-          <div className="flex gap-6 mt-4 pt-3 border-t border-slate-100">
+          <div className="flex flex-wrap gap-6 mt-4 pt-3 border-t border-slate-100">
             <div>
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">{c.totalGap}</div>
-              <div className="text-lg font-bold text-slate-900">{analysis.allMissing.size} <span className="text-xs font-normal text-slate-400">skills</span></div>
+              <div className="text-lg font-bold text-slate-900">{analysis.allMissing.size}</div>
             </div>
             <div>
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">{c.youHave}</div>
-              <div className="text-lg font-bold text-emerald-600">{analysis.allHave.size} <span className="text-xs font-normal text-slate-400">skills</span></div>
+              <div className="text-lg font-bold text-emerald-600">{analysis.allHave.size}</div>
             </div>
             <div>
               <div className="text-[10px] text-slate-400 uppercase tracking-wider">{c.estimatedTime}</div>
               <div className="text-lg font-bold text-blue-700">{estimatedMonths} {c.months}</div>
             </div>
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider">
+                {isZh ? '数据覆盖' : 'Data coverage'}
+              </div>
+              <div className="text-lg font-bold text-indigo-700">
+                {totalCoverage}/{analysis.prioritized.length}
+                {aiLoading && <span className="text-[10px] text-blue-500 ml-1 font-normal animate-pulse">AI...</span>}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Four dimensions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Toggle expand all */}
+        <div className="flex justify-end mb-3">
+          <button onClick={() => setAllExpanded(!allExpanded)}
+            className="text-xs text-blue-600 hover:underline">
+            {allExpanded ? c.collapseAll : c.expandAll}
+          </button>
+        </div>
 
-          {/* Dimension 1: Skills */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">📚</span>
-              <h2 className="text-base font-bold text-slate-900">{c.skills}</h2>
-            </div>
-            <p className="text-xs text-slate-400 mb-4">{c.skillsHint}</p>
-
-            {analysis.prioritized.length === 0 ? (
-              <p className="text-sm text-emerald-600 text-center py-4">
+        {/* Skill cards — the main content */}
+        <div className="space-y-3">
+          {analysis.prioritized.length === 0 ? (
+            <div className="bg-white border border-emerald-200 rounded-2xl p-8 text-center">
+              <div className="text-3xl mb-2">🎉</div>
+              <p className="text-sm font-medium text-emerald-700">
                 {isZh ? '你已具备所有所需技能！' : 'You already have all required skills!'}
               </p>
-            ) : (
-              <div className="space-y-2">
-                {analysis.prioritized.map(skill => {
-                  const roleCount = analysis.skillRoleCount.get(skill) || 0;
-                  const priorityColor = roleCount >= 3 ? 'bg-red-50 text-red-700 border-red-200' : roleCount >= 2 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200';
-                  const aiDefense = getSkillAiDefense(skill);
-                  return (
-                    <div key={skill} className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 border border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-slate-800">{skill}</span>
-                        {aiDefense >= 10 && (
-                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                            🛡 AI-{aiDefense}%
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${priorityColor}`}>
-                          {roleCount} {isZh ? '岗位需要' : 'roles'}
-                        </span>
-                      </div>
+            </div>
+          ) : (
+            analysis.prioritized.map(skill => {
+              const entries = toolmapData.get(skill) || [];
+              const aiSug = aiSuggestions[skill];
+              const roleCount = analysis.skillRoleCount.get(skill) || 0;
+              return (
+                <div key={skill}>
+                  {/* Priority badge */}
+                  {roleCount >= 2 && (
+                    <div className="text-[10px] font-bold text-red-600 mb-1 ml-1">
+                      {roleCount} {isZh ? '个目标岗位需要' : 'target roles need this'}
                     </div>
-                  );
-                })}
-                <p className="text-[10px] text-slate-400 mt-2">
-                  🛡 = {isZh ? '学习此技能可降低AI替代率' : 'Learning this skill reduces your AI replacement risk'}
-                </p>
-              </div>
-            )}
-
-            {userSkills.length > 0 && analysis.allHave.size > 0 && (
-              <div className="mt-4 pt-3 border-t border-slate-100">
-                <div className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider mb-2">✓ {c.youHave} ({analysis.allHave.size})</div>
-                <div className="flex flex-wrap gap-1">
-                  {[...analysis.allHave].slice(0, 12).map(s => (
-                    <span key={s} className="px-2 py-0.5 text-[10px] rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">{s}</span>
-                  ))}
+                  )}
+                  <SkillDetailCard
+                    key={skill + allExpanded}
+                    skill={skill}
+                    toolmapEntries={entries}
+                    aiSuggestion={aiSug}
+                    locale={locale}
+                    c={c}
+                    industryId={resolvedRoles[0]?.industry.id}
+                  />
                 </div>
-              </div>
-            )}
+              );
+            })
+          )}
+        </div>
+
+        {/* AI loading indicator */}
+        {aiLoading && (
+          <div className="mt-4 flex items-center justify-center gap-2 py-4">
+            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-blue-600">{c.aiLoading}</span>
           </div>
+        )}
 
-          {/* Dimension 2: Tools */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">🔧</span>
-              <h2 className="text-base font-bold text-slate-900">{c.tools}</h2>
-            </div>
-            <p className="text-xs text-slate-400 mb-4">{c.toolsHint}</p>
-
-            {tools.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">
-                {isZh ? '暂无推荐工具（IndustryToolMap即将上线）' : 'No tool recommendations yet (coming soon)'}
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {tools.map(({ skill, tools: t }) => (
-                  <div key={skill}>
-                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">{skill}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {t.map(tool => (
-                        <span key={tool} className="px-2.5 py-1 text-xs bg-blue-50 text-blue-700 rounded-lg border border-blue-200">{tool}</span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Dimension 3: Certifications */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">🏅</span>
-              <h2 className="text-base font-bold text-slate-900">{c.certs}</h2>
-            </div>
-            <p className="text-xs text-slate-400 mb-4">{c.certsHint}</p>
-
-            {certs.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">
-                {isZh ? '暂无推荐认证' : 'No certification recommendations yet'}
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {certs.map(({ skill, certs: certList }) => (
-                  <div key={skill}>
-                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">{skill}</div>
-                    {certList.map(cert => (
-                      <div key={cert.name} className="flex items-center justify-between py-2 px-3 rounded-lg bg-amber-50 border border-amber-100 mb-1.5">
-                        <div>
-                          <div className="text-xs font-medium text-slate-800">{cert.name}</div>
-                          <div className="text-[10px] text-slate-500">{cert.provider}</div>
-                        </div>
-                        <span className="text-xs font-mono text-amber-700">{cert.est_cost}</span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Dimension 4: Capstone Projects */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">🎯</span>
-              <h2 className="text-base font-bold text-slate-900">{c.capstone}</h2>
-            </div>
-            <p className="text-xs text-slate-400 mb-4">{c.capstoneHint}</p>
-
-            {capstones.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">
-                {isZh ? '暂无推荐实战项目' : 'No capstone project recommendations yet'}
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {capstones.map(({ skill, project }) => (
-                  <div key={skill} className="p-3 rounded-xl bg-indigo-50 border border-indigo-100">
-                    <div className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wider mb-1">{skill}</div>
-                    <div className="text-sm font-medium text-slate-800 mb-1">{isZh ? project.title_zh : project.title}</div>
-                    <div className="flex items-center gap-3 text-[10px] text-slate-500">
-                      <span>⏱ {project.hours}h</span>
-                      <span>📦 {project.deliverable}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        {/* Mobile download button */}
+        <div className="sm:hidden mt-6">
+          <button onClick={handleDownload}
+            className="w-full py-3 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors">
+            📥 {c.downloadPlan}
+          </button>
         </div>
 
         {/* Path Verification */}
         <PathVerification locale={locale} />
 
-        {/* CTA to Market Map */}
+        {/* CTA */}
         <div className="mt-8 bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
           <h3 className="text-base font-bold text-slate-900 mb-1">{c.nextStep}</h3>
           <p className="text-sm text-slate-500 mb-4">{c.nextStepHint}</p>
