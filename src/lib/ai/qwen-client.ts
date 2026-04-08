@@ -1,63 +1,48 @@
 /**
- * 通义千问 (Qwen) API Client
+ * AI Client — calls server-side /api/analyze
  *
- * Compatible with OpenAI API format.
- * Endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1
- *
- * When NEXT_PUBLIC_QWEN_API_KEY is not set, falls back to mock responses.
+ * API key is NEVER exposed to the browser.
+ * The server route handles Qwen API communication.
  */
 
-const QWEN_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-const QWEN_MODEL = 'qwen-plus'; // good balance of quality and cost
-
-function getApiKey(): string | null {
-  if (typeof window !== 'undefined') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (window as any).__QWEN_API_KEY as string | null
-      || process.env.NEXT_PUBLIC_QWEN_API_KEY
-      || null;
-  }
-  return process.env.NEXT_PUBLIC_QWEN_API_KEY || null;
-}
-
+/**
+ * Check if AI analysis is potentially available.
+ * In SSR mode, always returns true — the server decides if the key is configured.
+ * The client discovers availability when it calls the API.
+ */
 export function isAIAvailable(): boolean {
-  return !!getApiKey();
+  // In SSR mode, we assume AI is available and handle errors gracefully
+  return true;
 }
 
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
+/**
+ * Call the server-side AI analysis endpoint.
+ * Returns the parsed profile, or throws if unavailable.
+ */
+export async function analyzeWithAI(resumeText: string): Promise<{
+  profile: import('./types').CareerProfile;
+  mode: 'ai';
+} | null> {
+  try {
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resumeText }),
+    });
 
-interface QwenResponse {
-  choices: { message: { content: string } }[];
-}
+    if (!response.ok) {
+      // AI unavailable (no key configured, API error, etc.)
+      // Caller should fall back to rules engine
+      return null;
+    }
 
-export async function chatCompletion(messages: ChatMessage[], temperature = 0.3): Promise<string> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('QWEN_API_KEY not configured');
+    const data = await response.json();
+    if (data.mode === 'ai' && data.profile) {
+      return { profile: data.profile, mode: 'ai' };
+    }
+    return null;
+  } catch {
+    // Network error, server down, etc.
+    return null;
   }
-
-  const response = await fetch(`${QWEN_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: QWEN_MODEL,
-      messages,
-      temperature,
-      max_tokens: 2000,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Qwen API error ${response.status}: ${err}`);
-  }
-
-  const data: QwenResponse = await response.json();
-  return data.choices[0].message.content;
 }

@@ -1,37 +1,13 @@
-import { chatCompletion, isAIAvailable } from './qwen-client';
+import { analyzeWithAI } from './qwen-client';
 import { parseResume, calcRoleMatch, calcIndustryMatch } from '../resume-parser';
 import { allIndustries } from '../career-map';
 import type { CareerProfile } from './types';
 
-const SYSTEM_PROMPT = `你是一位资深制造业人力资源顾问，专注于高端制造业（汽车、航空、机器人、电子、能源、医疗器械、工业自动化、IT制造、咨询）的职业发展分析。
-
-用户会给你一段简历文本。请分析并返回JSON（不要Markdown代码块，直接返回JSON）：
-
-{
-  "industry": "Automotive Electronics",
-  "industry_zh": "汽车电子",
-  "function_area": "Quality Management",
-  "function_area_zh": "质量管理",
-  "level": "senior",
-  "level_zh": "高级工程师",
-  "years_experience": 8,
-  "core_competencies": ["IATF 16949", "FMEA", "SPC", "VDA 6.3"],
-  "languages": [{"language": "Chinese", "level": "Native"}, {"language": "English", "level": "C1"}],
-  "summary": "Experienced automotive quality professional...",
-  "summary_zh": "资深汽车质量专家...",
-  "cross_industry": [
-    {"industry_id": "medical-devices", "reason": "Quality systems (ISO 13485) overlap significantly with automotive IATF", "reason_zh": "质量体系(ISO 13485)与汽车IATF高度重合"},
-    {"industry_id": "aerospace", "reason": "AS9100 shares DNA with automotive quality standards", "reason_zh": "AS9100与汽车质量标准同源"}
-  ]
-}
-
-level必须是: junior, senior, lead, manager, director 之一。
-industry_id必须是: automotive, electronics, aerospace, consulting, energy, industrial-automation, medical-devices, it-manufacturing, robotics 之一。
-core_competencies用英文技能名（与行业标准一致）。
-summary用2-3句话概括此人的职业竞争力和发展潜力。`;
-
 /**
- * Analyze resume with AI (Qwen) or fall back to rule-based analysis.
+ * Analyze resume: try AI (via server-side /api/analyze), fall back to rules.
+ *
+ * Skills are ALWAYS extracted by the rules engine (reliable, instant).
+ * AI enhances with a richer profile (summary, cross-industry, languages).
  */
 export async function analyzeResume(resumeText: string): Promise<{
   profile: CareerProfile;
@@ -39,7 +15,7 @@ export async function analyzeResume(resumeText: string): Promise<{
   industryMatches: { id: string; name: string; name_zh: string; icon: string; match: number; avgSalaryCN: number; avgSalaryDE: number; roleCount: number }[];
   mode: 'ai' | 'rules';
 }> {
-  // Always extract skills with rules engine
+  // Always extract skills with rules engine (instant, reliable)
   const skills = parseResume(resumeText);
 
   // Calculate industry matches
@@ -54,27 +30,20 @@ export async function analyzeResume(resumeText: string): Promise<{
     roleCount: ind.roles.length,
   })).sort((a, b) => b.match - a.match);
 
-  // Try AI analysis
-  if (isAIAvailable() && resumeText.length > 50) {
+  // Try AI analysis via server-side route
+  if (resumeText.length > 50) {
     try {
-      const response = await chatCompletion([
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: resumeText },
-      ]);
+      const aiResult = await analyzeWithAI(resumeText);
+      if (aiResult) {
+        const profile = aiResult.profile;
 
-      // Parse JSON from response (handle possible markdown wrapping)
-      let jsonStr = response.trim();
-      if (jsonStr.startsWith('```')) {
-        jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+        // Merge AI-detected competencies with rule-based skills
+        for (const comp of profile.core_competencies) {
+          if (!skills.includes(comp)) skills.push(comp);
+        }
+
+        return { profile, skills, industryMatches, mode: 'ai' };
       }
-      const profile: CareerProfile = JSON.parse(jsonStr);
-
-      // Merge AI-detected competencies with rule-based skills
-      for (const comp of profile.core_competencies) {
-        if (!skills.includes(comp)) skills.push(comp);
-      }
-
-      return { profile, skills, industryMatches, mode: 'ai' };
     } catch (e) {
       console.warn('AI analysis failed, falling back to rules:', e);
     }
@@ -87,7 +56,6 @@ export async function analyzeResume(resumeText: string): Promise<{
 
 /** Generate a basic career profile using rule-based heuristics */
 function generateRulesProfile(skills: string[], text: string): CareerProfile {
-  // Detect industry from skill clusters
   const industryScores = allIndustries.map(ind => ({
     ind,
     score: calcIndustryMatch(skills, ind),
@@ -95,23 +63,19 @@ function generateRulesProfile(skills: string[], text: string): CareerProfile {
 
   const topIndustry = industryScores[0]?.ind;
 
-  // Detect experience level from text patterns
   const yearMatch = text.match(/(\d{1,2})\s*(?:years?|年|Jahre?)/i);
   const years = yearMatch ? parseInt(yearMatch[1]) : estimateYears(skills);
   const level = years >= 15 ? 'director' : years >= 10 ? 'manager' : years >= 6 ? 'lead' : years >= 3 ? 'senior' : 'junior';
   const levelZh = { junior: '初级', senior: '高级', lead: '主管', manager: '经理', director: '总监' }[level];
 
-  // Detect languages
   const languages: { language: string; level: string }[] = [];
   if (/中文|chinese|母语|native.*chinese/i.test(text)) languages.push({ language: 'Chinese', level: 'Native' });
   if (/english|英语|IELTS|TOEFL|CET/i.test(text)) languages.push({ language: 'English', level: detectLangLevel(text, 'english') });
   if (/german|deutsch|德语|Goethe|TestDaF/i.test(text)) languages.push({ language: 'German', level: detectLangLevel(text, 'german') });
   if (languages.length === 0) languages.push({ language: 'Chinese', level: 'Native' });
 
-  // Detect function area
   const funcArea = detectFunctionArea(skills);
 
-  // Cross-industry potential
   const crossIndustry = industryScores.slice(1, 4)
     .filter(x => x.score > 10)
     .map(x => ({
@@ -137,7 +101,6 @@ function generateRulesProfile(skills: string[], text: string): CareerProfile {
 }
 
 function estimateYears(skills: string[]): number {
-  // More skills generally = more experience
   if (skills.length >= 20) return 10;
   if (skills.length >= 12) return 6;
   if (skills.length >= 6) return 3;

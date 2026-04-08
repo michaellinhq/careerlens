@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useMemo, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { useLocale } from '@/lib/locale-context';
 import { useSkills } from '@/lib/skills-context';
+import { useCart } from '@/lib/cart-context';
 import { calcRoleMatch, calcIndustryMatch } from '@/lib/resume-parser';
 import { t } from '@/lib/i18n';
 import { allIndustries } from '@/lib/career-map';
@@ -67,9 +68,29 @@ function JobSearchLinks({ role, locale }: { role: CareerRole; locale: string }) 
   );
 }
 
-/* ─── Role Card (enhanced with skill gap + job links) ─── */
-function RoleCard({ role, market, locale, maxSalary, matchPct, userSkills }: {
-  role: CareerRole; market: 'CN' | 'DE'; locale: 'en' | 'de' | 'zh'; maxSalary: number; matchPct: number; userSkills: string[];
+/* ─── Cart Button ─── */
+function CartButton({ role, industryId }: { role: CareerRole; industryId: string }) {
+  const { addToCart, removeFromCart, isInCart } = useCart();
+  const inCart = isInCart(role.id);
+
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); inCart ? removeFromCart(role.id) : addToCart(role.id, industryId); }}
+      className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
+        inCart
+          ? 'bg-blue-600 text-white shadow-sm hover:bg-red-500'
+          : 'bg-slate-100 text-slate-400 hover:bg-blue-100 hover:text-blue-600 border border-slate-200'
+      }`}
+      title={inCart ? 'Remove from plan' : 'Add to plan'}
+    >
+      {inCart ? '✓' : '+'}
+    </button>
+  );
+}
+
+/* ─── Role Card ─── */
+function RoleCard({ role, industryId, market, locale, maxSalary, matchPct, userSkills }: {
+  role: CareerRole; industryId: string; market: 'CN' | 'DE'; locale: 'en' | 'de' | 'zh'; maxSalary: number; matchPct: number; userSkills: string[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const isZh = locale === 'zh';
@@ -78,7 +99,6 @@ function RoleCard({ role, market, locale, maxSalary, matchPct, userSkills }: {
   const currency = market === 'CN' ? '¥' : '€';
   const unit = market === 'CN' ? '/月' : '/yr';
 
-  // Skill gap analysis
   const allRoleSkills = [...new Set([...role.core_skills, ...role.levels.flatMap(l => l.key_skills)])];
   const userLower = userSkills.map(s => s.toLowerCase());
   const haveSkills = allRoleSkills.filter(s => userLower.some(us => us.includes(s.toLowerCase()) || s.toLowerCase().includes(us)));
@@ -88,52 +108,54 @@ function RoleCard({ role, market, locale, maxSalary, matchPct, userSkills }: {
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-      <button onClick={() => setExpanded(!expanded)} className="w-full text-left p-4 hover:bg-slate-50 transition-colors">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h4 className="text-sm font-bold text-slate-900">{title}</h4>
-            <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{funcArea}</span>
-            {matchPct > 0 && (
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${matchColor(matchPct)}`}>
-                {matchPct}%
+      <div className="flex items-center gap-2 p-4">
+        <button onClick={() => setExpanded(!expanded)} className="flex-1 text-left hover:bg-slate-50 transition-colors -m-4 p-4 pr-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="text-sm font-bold text-slate-900">{title}</h4>
+              <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{funcArea}</span>
+              {matchPct > 0 && (
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${matchColor(matchPct)}`}>
+                  {matchPct}%
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${growthColor}`}>
+                {role.growth_outlook === 'high' ? '🔥' : role.growth_outlook === 'medium' ? '→' : '↓'}
               </span>
-            )}
+              <svg className={`w-4 h-4 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${growthColor}`}>
-              {role.growth_outlook === 'high' ? '🔥' : role.growth_outlook === 'medium' ? '→' : '↓'}
-            </span>
-            <svg className={`w-4 h-4 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+          <div className="flex items-end gap-[3px] h-8">
+            {role.levels.map((lv, i) => {
+              const salary = market === 'CN' ? lv.salary_cn : lv.salary_de;
+              const height = (salary.mid / maxSalary) * 100;
+              const colors = ['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb'];
+              return (
+                <div key={lv.level} className="flex-1 flex flex-col items-center">
+                  <span className="text-[8px] font-mono text-slate-400 mb-0.5">{currency}{salary.mid}K</span>
+                  <div className="w-full rounded-t-sm" style={{ height: `${Math.max(height * 0.32, 3)}px`, background: colors[i] }} />
+                </div>
+              );
+            })}
           </div>
-        </div>
-        {/* Mini bar chart */}
-        <div className="flex items-end gap-[3px] h-8">
-          {role.levels.map((lv, i) => {
-            const salary = market === 'CN' ? lv.salary_cn : lv.salary_de;
-            const height = (salary.mid / maxSalary) * 100;
-            const colors = ['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb'];
-            return (
-              <div key={lv.level} className="flex-1 flex flex-col items-center">
-                <span className="text-[8px] font-mono text-slate-400 mb-0.5">{currency}{salary.mid}K</span>
-                <div className="w-full rounded-t-sm" style={{ height: `${Math.max(height * 0.32, 3)}px`, background: colors[i] }} />
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex gap-0 mt-0.5">
-          {LEVELS.map(l => (
-            <span key={l} className="flex-1 text-center text-[8px] text-slate-400">
-              {isZh ? LEVEL_LABELS[l].zh : LEVEL_LABELS[l].en}
-            </span>
-          ))}
-        </div>
-      </button>
+          <div className="flex gap-0 mt-0.5">
+            {LEVELS.map(l => (
+              <span key={l} className="flex-1 text-center text-[8px] text-slate-400">
+                {isZh ? LEVEL_LABELS[l].zh : LEVEL_LABELS[l].en}
+              </span>
+            ))}
+          </div>
+        </button>
+        {/* Cart button */}
+        <CartButton role={role} industryId={industryId} />
+      </div>
 
       {expanded && (
         <div className="border-t border-slate-100 p-4 space-y-4 bg-slate-50/50">
-          {/* Skill gap visualization */}
           {userSkills.length > 0 && (
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -149,22 +171,20 @@ function RoleCard({ role, market, locale, maxSalary, matchPct, userSkills }: {
               </div>
               <div>
                 <span className="text-[10px] font-semibold text-red-500 uppercase tracking-wider">
-                  ✗ {isZh ? '你缺少' : 'You need'} ({missingSkills.length})
+                  ✗ {isZh ? '补上即可入行' : 'Skills to learn'} ({missingSkills.length})
                 </span>
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {missingSkills.slice(0, 8).map(s => (
-                    <a key={s} href={`/learn?skill=${encodeURIComponent(s)}`}
-                      className="px-2 py-0.5 text-[10px] rounded-full bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors cursor-pointer">
-                      {s} →
-                    </a>
+                    <span key={s} className="px-2 py-0.5 text-[10px] rounded-full bg-red-50 text-red-600 border border-red-200">
+                      {s}
+                    </span>
                   ))}
-                  {missingSkills.length > 8 && <span className="text-[10px] text-slate-400">+{missingSkills.length - 8} more</span>}
+                  {missingSkills.length > 8 && <span className="text-[10px] text-slate-400">+{missingSkills.length - 8}</span>}
                 </div>
               </div>
             </div>
           )}
 
-          {/* Core skills (if no user skills) */}
           {userSkills.length === 0 && (
             <div>
               <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{isZh ? '核心技能' : 'Core Skills'}</span>
@@ -176,7 +196,6 @@ function RoleCard({ role, market, locale, maxSalary, matchPct, userSkills }: {
             </div>
           )}
 
-          {/* Salary ladder */}
           <div className="space-y-2">
             <div className="grid grid-cols-[90px_1fr_auto] gap-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
               <span>{isZh ? '级别' : 'Level'}</span>
@@ -201,7 +220,6 @@ function RoleCard({ role, market, locale, maxSalary, matchPct, userSkills }: {
             })}
           </div>
 
-          {/* Job search links */}
           <div>
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{isZh ? '查看真实招聘' : 'Search Real Jobs'}</span>
             <JobSearchLinks role={role} locale={locale} />
@@ -216,13 +234,12 @@ function RoleCard({ role, market, locale, maxSalary, matchPct, userSkills }: {
 function SignalSidebar({ industryId, locale }: { industryId: string; locale: string }) {
   const isZh = locale === 'zh';
   const relevant = mockNews.filter(n => n.impacts.some(i => i.industry_id === industryId)).slice(0, 3);
-
   if (relevant.length === 0) return null;
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
       <h4 className="text-xs font-semibold text-slate-900 mb-3">
-        📡 {isZh ? '相关市场信号' : 'Related Market Signals'}
+        {isZh ? '相关市场信号' : 'Related Market Signals'}
       </h4>
       <div className="space-y-3">
         {relevant.map(news => {
@@ -243,14 +260,11 @@ function SignalSidebar({ industryId, locale }: { industryId: string; locale: str
           );
         })}
       </div>
-      <a href="/signals" className="block text-center text-[10px] text-blue-600 hover:underline mt-3">
-        {isZh ? '查看全部信号 →' : 'View all signals →'}
-      </a>
     </div>
   );
 }
 
-/* ─── Industry Hub (SVG radial map) ─── */
+/* ─── Industry Hub SVG ─── */
 function IndustryHub({ industries, locale, onSelect, matchMap }: {
   industries: IndustryCareerMap[];
   locale: 'en' | 'de' | 'zh';
@@ -282,7 +296,7 @@ function IndustryHub({ industries, locale, onSelect, matchMap }: {
           const isHov = hovered === ind.id;
           const nodeR = isHov ? 52 : 46;
           const name = isZh ? ind.name_zh : locale === 'de' ? ind.name_de : ind.name;
-          const shortName = name.length > 8 ? name.slice(0, 7) + '…' : name;
+          const shortName = name.length > 8 ? name.slice(0, 7) + '...' : name;
           const match = matchMap.get(ind.id) || 0;
           const subs = ind.sub_categories || [];
           const subR = 78;
@@ -301,7 +315,7 @@ function IndustryHub({ industries, locale, onSelect, matchMap }: {
                     <circle cx={sx} cy={sy} r={22} fill="#eff6ff" stroke="#93c5fd" strokeWidth="1" />
                     <text x={sx} y={sy - 5} textAnchor="middle" fill="#1e40af" fontSize="11">{sub.icon}</text>
                     <text x={sx} y={sy + 9} textAnchor="middle" fill="#475569" fontSize="7" fontWeight="500">
-                      {subName.length > 6 ? subName.slice(0, 5) + '…' : subName}
+                      {subName.length > 6 ? subName.slice(0, 5) + '...' : subName}
                     </text>
                   </g>
                 );
@@ -331,6 +345,47 @@ function IndustryHub({ industries, locale, onSelect, matchMap }: {
   );
 }
 
+/* ─── Floating Cart Bar ─── */
+function FloatingCartBar({ locale }: { locale: string }) {
+  const { cart } = useCart();
+  const router = useRouter();
+  const isZh = locale === 'zh';
+
+  if (cart.length === 0) return null;
+
+  const roleNames = cart.slice(0, 3).map(c => {
+    for (const ind of allIndustries) {
+      const role = ind.roles.find(r => r.id === c.roleId);
+      if (role) return isZh ? role.title_zh : role.title;
+    }
+    return '?';
+  });
+
+  return (
+    <div className="fixed bottom-0 inset-x-0 z-50 bg-white/95 backdrop-blur-md border-t border-blue-200 shadow-lg">
+      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="bg-blue-600 text-white text-sm font-bold w-8 h-8 rounded-full flex items-center justify-center">
+            {cart.length}
+          </span>
+          <div>
+            <div className="text-sm font-semibold text-slate-900">
+              {isZh ? '已选目标岗位' : 'Target roles selected'}
+            </div>
+            <div className="text-xs text-slate-500 truncate max-w-[300px]">
+              {roleNames.join(', ')}{cart.length > 3 ? ` +${cart.length - 3}` : ''}
+            </div>
+          </div>
+        </div>
+        <button onClick={() => router.push('/plan')}
+          className="px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors text-sm shadow-sm">
+          {isZh ? '制定行动计划 →' : locale === 'de' ? 'Aktionsplan erstellen →' : 'Build Action Plan →'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Page ─── */
 export default function IndustriesPageWrapper() {
   return (
@@ -346,7 +401,6 @@ function IndustriesPage() {
   const searchParams = useSearchParams();
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [market, setMarket] = useState<'CN' | 'DE'>('CN');
-  const [levelFilter, setLevelFilter] = useState<CareerLevel | 'all'>('all');
   const [sortBy, setSortBy] = useState<'match' | 'salary' | 'growth'>('match');
   const isZh = locale === 'zh';
 
@@ -396,17 +450,20 @@ function IndustriesPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-8 pb-24">
 
         {!selectedIndustry ? (
           <>
             <div className="text-center mb-6">
-              <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">
-                {isZh ? '高端制造业 · 行业图谱' : locale === 'de' ? 'Hightech-Fertigung · Branchenlandkarte' : 'Advanced Manufacturing · Industry Map'}
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-1">
+                {isZh ? '去哪里？' : locale === 'de' ? 'Wohin?' : 'Where To Go?'}
               </h1>
+              <p className="text-sm text-blue-600 font-medium mb-2">
+                {isZh ? '高端制造业 · 行业图谱' : 'Advanced Manufacturing · Industry Map'}
+              </p>
               <p className="text-slate-500 max-w-2xl mx-auto text-sm">
-                {isZh ? '2026年全球高收入工程行业 — 选择行业查看完整薪资阶梯和技能缺口'
-                  : '2026 Top Engineering Industries — Select to see salary ladders and skill gaps'}
+                {isZh ? '浏览行业和岗位，将目标岗位加入购物车，生成精准行动计划'
+                  : 'Browse industries and roles. Add target roles to your cart, then build a precise action plan.'}
               </p>
               {userSkills.length > 0 && (
                 <p className="text-xs text-blue-600 mt-2">
@@ -524,10 +581,12 @@ function IndustriesPage() {
               )}
               <span className="text-xs text-slate-400">
                 {industry.roles.length} {isZh ? '个岗位' : 'roles'} × 5 {isZh ? '个级别' : 'levels'}
+                {' · '}
+                <span className="text-blue-600">{isZh ? '点击 + 加入计划' : 'Click + to add to plan'}</span>
               </span>
             </div>
 
-            {/* Main content: roles + signal sidebar */}
+            {/* Main content */}
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
               <div>
                 {/* Salary overview */}
@@ -540,7 +599,7 @@ function IndustriesPage() {
                       const juniorMid = market === 'CN' ? role.levels[0].salary_cn.mid : role.levels[0].salary_de.mid;
                       const directorMid = market === 'CN' ? role.levels[4].salary_cn.mid : role.levels[4].salary_de.mid;
                       const title = isZh ? role.title_zh : locale === 'de' ? role.title_de : role.title;
-                      const currency = market === 'CN' ? '¥' : '€';
+                      const cur = market === 'CN' ? '¥' : '€';
                       const pctJ = (juniorMid / maxSalary) * 100;
                       const pctD = (directorMid / maxSalary) * 100;
                       const rm = roleMatchMap.get(role.id) || 0;
@@ -555,10 +614,10 @@ function IndustriesPage() {
                             <div className="absolute top-0 h-full rounded bg-gradient-to-r from-blue-200 to-blue-500"
                               style={{ left: `${pctJ}%`, width: `${pctD - pctJ}%` }} />
                             <div className="absolute top-0 h-full flex items-center text-[9px] font-mono" style={{ left: `${pctJ}%` }}>
-                              <span className="text-slate-500 ml-0.5">{currency}{juniorMid}K</span>
+                              <span className="text-slate-500 ml-0.5">{cur}{juniorMid}K</span>
                             </div>
                             <div className="absolute top-0 h-full flex items-center justify-end text-[9px] font-mono" style={{ left: '0', width: `${pctD}%` }}>
-                              <span className="text-blue-800 font-bold mr-0.5">{currency}{directorMid}K</span>
+                              <span className="text-blue-800 font-bold mr-0.5">{cur}{directorMid}K</span>
                             </div>
                           </div>
                         </div>
@@ -569,11 +628,11 @@ function IndustriesPage() {
 
                 {/* Role cards */}
                 <h3 className="text-sm font-semibold text-slate-900 mb-3">
-                  {isZh ? '岗位详情 — 展开查看薪资阶梯和技能差距' : 'Role Details — Expand for salary ladder & skill gaps'}
+                  {isZh ? '岗位详情 — 展开查看薪资和技能差距，点击 + 加入计划' : 'Role Details — Expand for salary & skill gaps, click + to add to plan'}
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {sortedRoles.map(role => (
-                    <RoleCard key={role.id} role={role} market={market} locale={locale} maxSalary={maxSalary}
+                    <RoleCard key={role.id} role={role} industryId={industry.id} market={market} locale={locale} maxSalary={maxSalary}
                       matchPct={roleMatchMap.get(role.id) || 0} userSkills={userSkills} />
                   ))}
                 </div>
@@ -591,6 +650,8 @@ function IndustriesPage() {
           {t(locale, 'footer')}
         </footer>
       </main>
+
+      <FloatingCartBar locale={locale} />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { LocaleProvider } from "@/lib/locale-context";
 import { SkillsProvider } from "@/lib/skills-context";
+import { CartProvider } from "@/lib/cart-context";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -30,7 +31,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <LocaleProvider>
           <SkillsProvider>
-            {children}
+            <CartProvider>
+              {children}
+            </CartProvider>
           </SkillsProvider>
         </LocaleProvider>
       </body>
