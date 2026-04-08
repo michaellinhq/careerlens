@@ -4,14 +4,15 @@ import { NextRequest, NextResponse } from 'next/server';
  * POST /api/analyze
  *
  * Server-side resume analysis endpoint.
- * Calls Qwen API with the secret API key — never exposed to the browser.
+ * Calls DeepSeek API with the secret API key — never exposed to the browser.
+ * OpenAI-compatible format.
  *
  * Request body: { resumeText: string }
  * Response: { profile: CareerProfile, mode: 'ai' } or { error: string }
  */
 
-const QWEN_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-const QWEN_MODEL = 'qwen-plus';
+const API_BASE_URL = 'https://api.deepseek.com/v1';
+const API_MODEL = 'deepseek-chat';
 
 const SYSTEM_PROMPT = `你是一位资深制造业人力资源顾问，专注于高端制造业（汽车、航空、机器人、电子、能源、医疗器械、工业自动化、IT制造、咨询）的职业发展分析。
 
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
     // Cap input to prevent abuse
     const text = resumeText.slice(0, 8000);
 
-    const apiKey = process.env.QWEN_API_KEY;
+    const apiKey = process.env.DEEPSEEK_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
         { error: 'AI not configured', mode: 'unavailable' },
@@ -62,14 +63,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = await fetch(`${QWEN_BASE_URL}/chat/completions`, {
+    const response = await fetch(`${API_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: QWEN_MODEL,
+        model: API_MODEL,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: text },
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const err = await response.text();
-      console.error(`Qwen API error ${response.status}: ${err}`);
+      console.error(`DeepSeek API error ${response.status}: ${err}`);
       return NextResponse.json(
         { error: 'AI service error', mode: 'unavailable' },
         { status: 502 },
