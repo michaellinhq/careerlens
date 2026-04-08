@@ -8,6 +8,7 @@ import { useSkills } from '@/lib/skills-context';
 import { calcRoleMatch, calcIndustryMatch } from '@/lib/resume-parser';
 import { t } from '@/lib/i18n';
 import { allIndustries } from '@/lib/career-map';
+import { mockNews } from '@/lib/ai/mock-signals';
 import type { IndustryCareerMap, CareerRole, CareerLevel } from '@/lib/career-map';
 
 const LEVEL_LABELS: Record<CareerLevel, { en: string; zh: string; de: string }> = {
@@ -20,15 +21,11 @@ const LEVEL_LABELS: Record<CareerLevel, { en: string; zh: string; de: string }> 
 
 const LEVELS: CareerLevel[] = ['junior', 'senior', 'lead', 'manager', 'director'];
 
-/* ─── Match Badge ─── */
-function MatchBadge({ match }: { match: number }) {
-  if (match <= 0) return null;
-  const color = match >= 40 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : match >= 20 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-slate-500 bg-slate-50 border-slate-200';
-  return (
-    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${color}`}>
-      {match}%
-    </span>
-  );
+function matchColor(m: number): string {
+  return m >= 60 ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+    : m >= 40 ? 'text-emerald-600 bg-emerald-50 border-emerald-200'
+    : m >= 20 ? 'text-amber-700 bg-amber-50 border-amber-200'
+    : 'text-slate-500 bg-slate-50 border-slate-200';
 }
 
 /* ─── Salary Bar ─── */
@@ -49,13 +46,43 @@ function SalaryBar({ low, mid, high, max, currency }: { low: number; mid: number
   );
 }
 
-/* ─── Role Card (expandable) ─── */
-function RoleCard({ role, market, locale, maxSalary, matchPct }: { role: CareerRole; market: 'CN' | 'DE'; locale: 'en' | 'de' | 'zh'; maxSalary: number; matchPct: number }) {
+/* ─── Job Search Links ─── */
+function JobSearchLinks({ role, locale }: { role: CareerRole; locale: string }) {
+  const title = encodeURIComponent(locale === 'de' ? role.title_de : role.title);
+  return (
+    <div className="flex gap-2 mt-2">
+      <a href={`https://www.linkedin.com/jobs/search/?keywords=${title}`} target="_blank" rel="noopener noreferrer"
+        className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors">
+        LinkedIn Jobs
+      </a>
+      <a href={`https://www.indeed.com/jobs?q=${title}`} target="_blank" rel="noopener noreferrer"
+        className="text-[10px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors">
+        Indeed
+      </a>
+      <a href={`https://www.stepstone.de/jobs/${encodeURIComponent(role.title_de)}`} target="_blank" rel="noopener noreferrer"
+        className="text-[10px] px-2 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition-colors">
+        StepStone
+      </a>
+    </div>
+  );
+}
+
+/* ─── Role Card (enhanced with skill gap + job links) ─── */
+function RoleCard({ role, market, locale, maxSalary, matchPct, userSkills }: {
+  role: CareerRole; market: 'CN' | 'DE'; locale: 'en' | 'de' | 'zh'; maxSalary: number; matchPct: number; userSkills: string[];
+}) {
   const [expanded, setExpanded] = useState(false);
-  const title = locale === 'zh' ? role.title_zh : locale === 'de' ? role.title_de : role.title;
-  const funcArea = locale === 'zh' ? role.function_area_zh : role.function_area;
+  const isZh = locale === 'zh';
+  const title = isZh ? role.title_zh : locale === 'de' ? role.title_de : role.title;
+  const funcArea = isZh ? role.function_area_zh : role.function_area;
   const currency = market === 'CN' ? '¥' : '€';
   const unit = market === 'CN' ? '/月' : '/yr';
+
+  // Skill gap analysis
+  const allRoleSkills = [...new Set([...role.core_skills, ...role.levels.flatMap(l => l.key_skills)])];
+  const userLower = userSkills.map(s => s.toLowerCase());
+  const haveSkills = allRoleSkills.filter(s => userLower.some(us => us.includes(s.toLowerCase()) || s.toLowerCase().includes(us)));
+  const missingSkills = allRoleSkills.filter(s => !haveSkills.includes(s));
 
   const growthColor = role.growth_outlook === 'high' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : role.growth_outlook === 'medium' ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-red-700 bg-red-50 border-red-200';
 
@@ -63,10 +90,14 @@ function RoleCard({ role, market, locale, maxSalary, matchPct }: { role: CareerR
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       <button onClick={() => setExpanded(!expanded)} className="w-full text-left p-4 hover:bg-slate-50 transition-colors">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h4 className="text-sm font-bold text-slate-900">{title}</h4>
             <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{funcArea}</span>
-            <MatchBadge match={matchPct} />
+            {matchPct > 0 && (
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${matchColor(matchPct)}`}>
+                {matchPct}%
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             <span className={`text-[10px] px-1.5 py-0.5 rounded border ${growthColor}`}>
@@ -94,7 +125,7 @@ function RoleCard({ role, market, locale, maxSalary, matchPct }: { role: CareerR
         <div className="flex gap-0 mt-0.5">
           {LEVELS.map(l => (
             <span key={l} className="flex-1 text-center text-[8px] text-slate-400">
-              {locale === 'zh' ? LEVEL_LABELS[l].zh : LEVEL_LABELS[l].en}
+              {isZh ? LEVEL_LABELS[l].zh : LEVEL_LABELS[l].en}
             </span>
           ))}
         </div>
@@ -102,23 +133,59 @@ function RoleCard({ role, market, locale, maxSalary, matchPct }: { role: CareerR
 
       {expanded && (
         <div className="border-t border-slate-100 p-4 space-y-4 bg-slate-50/50">
-          <div>
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{locale === 'zh' ? '核心技能' : 'Core Skills'}</span>
-            <div className="flex flex-wrap gap-1 mt-1.5">
-              {role.core_skills.map(s => (
-                <span key={s} className="px-2 py-0.5 text-[10px] rounded-full bg-blue-50 text-blue-700 border border-blue-200">{s}</span>
-              ))}
+          {/* Skill gap visualization */}
+          {userSkills.length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <span className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider">
+                  ✓ {isZh ? '你已具备' : 'You have'} ({haveSkills.length})
+                </span>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {haveSkills.map(s => (
+                    <span key={s} className="px-2 py-0.5 text-[10px] rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">{s}</span>
+                  ))}
+                  {haveSkills.length === 0 && <span className="text-[10px] text-slate-400">—</span>}
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-semibold text-red-500 uppercase tracking-wider">
+                  ✗ {isZh ? '你缺少' : 'You need'} ({missingSkills.length})
+                </span>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {missingSkills.slice(0, 8).map(s => (
+                    <a key={s} href={`/learn?skill=${encodeURIComponent(s)}`}
+                      className="px-2 py-0.5 text-[10px] rounded-full bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors cursor-pointer">
+                      {s} →
+                    </a>
+                  ))}
+                  {missingSkills.length > 8 && <span className="text-[10px] text-slate-400">+{missingSkills.length - 8} more</span>}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Core skills (if no user skills) */}
+          {userSkills.length === 0 && (
+            <div>
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{isZh ? '核心技能' : 'Core Skills'}</span>
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {role.core_skills.map(s => (
+                  <span key={s} className="px-2 py-0.5 text-[10px] rounded-full bg-blue-50 text-blue-700 border border-blue-200">{s}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Salary ladder */}
           <div className="space-y-2">
             <div className="grid grid-cols-[90px_1fr_auto] gap-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-              <span>{locale === 'zh' ? '级别' : 'Level'}</span>
-              <span>{locale === 'zh' ? '薪资范围' : 'Salary'} ({currency}K{unit})</span>
-              <span>{locale === 'zh' ? '经验' : 'Exp'}</span>
+              <span>{isZh ? '级别' : 'Level'}</span>
+              <span>{isZh ? '薪资范围' : 'Salary'} ({currency}K{unit})</span>
+              <span>{isZh ? '经验' : 'Exp'}</span>
             </div>
             {role.levels.map(lv => {
               const salary = market === 'CN' ? lv.salary_cn : lv.salary_de;
-              const levelLabel = locale === 'zh' ? lv.level_zh : locale === 'de' ? lv.level_de : LEVEL_LABELS[lv.level].en;
+              const levelLabel = isZh ? lv.level_zh : locale === 'de' ? lv.level_de : LEVEL_LABELS[lv.level].en;
               return (
                 <div key={lv.level}>
                   <div className="grid grid-cols-[90px_1fr_auto] gap-2 items-center">
@@ -133,8 +200,52 @@ function RoleCard({ role, market, locale, maxSalary, matchPct }: { role: CareerR
               );
             })}
           </div>
+
+          {/* Job search links */}
+          <div>
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{isZh ? '查看真实招聘' : 'Search Real Jobs'}</span>
+            <JobSearchLinks role={role} locale={locale} />
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ─── Signal Sidebar ─── */
+function SignalSidebar({ industryId, locale }: { industryId: string; locale: string }) {
+  const isZh = locale === 'zh';
+  const relevant = mockNews.filter(n => n.impacts.some(i => i.industry_id === industryId)).slice(0, 3);
+
+  if (relevant.length === 0) return null;
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+      <h4 className="text-xs font-semibold text-slate-900 mb-3">
+        📡 {isZh ? '相关市场信号' : 'Related Market Signals'}
+      </h4>
+      <div className="space-y-3">
+        {relevant.map(news => {
+          const impact = news.impacts.find(i => i.industry_id === industryId)!;
+          return (
+            <div key={news.id} className="border-l-2 pl-3" style={{
+              borderColor: impact.direction === 'positive' ? '#10b981' : impact.direction === 'negative' ? '#ef4444' : '#6b7280'
+            }}>
+              <div className="text-[10px] text-slate-400 mb-0.5">{news.date} · {news.source}</div>
+              <div className="text-xs font-medium text-slate-800 mb-1">{isZh ? news.headline_zh : news.headline}</div>
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] font-bold ${impact.direction === 'positive' ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {impact.direction === 'positive' ? '↑' : '↓'}{impact.magnitude}%
+                </span>
+                <span className="text-[10px] text-slate-500">{isZh ? impact.reason_zh : impact.reason}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <a href="/signals" className="block text-center text-[10px] text-blue-600 hover:underline mt-3">
+        {isZh ? '查看全部信号 →' : 'View all signals →'}
+      </a>
     </div>
   );
 }
@@ -148,48 +259,42 @@ function IndustryHub({ industries, locale, onSelect, matchMap }: {
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const cx = 300, cy = 280, outerR = 220, innerR = 70;
+  const isZh = locale === 'zh';
 
   return (
     <div className="flex justify-center">
       <svg viewBox="0 0 600 560" className="w-full max-w-[600px]">
-        {/* Center hub */}
         <circle cx={cx} cy={cy} r={innerR} fill="#eff6ff" stroke="#bfdbfe" strokeWidth="2" />
         <text x={cx} y={cy - 14} textAnchor="middle" fill="#1e40af" fontSize="13" fontWeight="700">
-          {locale === 'zh' ? '高端制造' : 'Advanced'}
+          {isZh ? '高端制造' : 'Advanced'}
         </text>
         <text x={cx} y={cy + 4} textAnchor="middle" fill="#1e40af" fontSize="13" fontWeight="700">
-          {locale === 'zh' ? '行业图谱' : 'Manufacturing'}
+          {isZh ? '行业图谱' : 'Manufacturing'}
         </text>
         <text x={cx} y={cy + 22} textAnchor="middle" fill="#3b82f6" fontSize="10">
-          {locale === 'zh' ? `${industries.length}个行业 · 2026` : `${industries.length} Industries · 2026`}
+          {isZh ? `${industries.length}个行业 · 2026` : `${industries.length} Industries · 2026`}
         </text>
 
-        {/* Industry nodes */}
         {industries.map((ind, i) => {
           const angle = (Math.PI * 2 * i) / industries.length - Math.PI / 2;
           const nx = cx + outerR * Math.cos(angle);
           const ny = cy + outerR * Math.sin(angle);
-          const isHovered = hovered === ind.id;
-          const nodeR = isHovered ? 52 : 46;
-          const name = locale === 'zh' ? ind.name_zh : locale === 'de' ? ind.name_de : ind.name;
+          const isHov = hovered === ind.id;
+          const nodeR = isHov ? 52 : 46;
+          const name = isZh ? ind.name_zh : locale === 'de' ? ind.name_de : ind.name;
           const shortName = name.length > 8 ? name.slice(0, 7) + '…' : name;
           const match = matchMap.get(ind.id) || 0;
-
-          // Sub-categories
           const subs = ind.sub_categories || [];
           const subR = 78;
 
           return (
             <g key={ind.id}>
-              {/* Connection line */}
-              <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={isHovered ? '#3b82f6' : '#e2e8f0'} strokeWidth={isHovered ? 2 : 1} strokeDasharray={isHovered ? '' : '4 4'} />
-
-              {/* Sub-category nodes (only when hovered) */}
-              {isHovered && subs.map((sub, si) => {
+              <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={isHov ? '#3b82f6' : '#e2e8f0'} strokeWidth={isHov ? 2 : 1} strokeDasharray={isHov ? '' : '4 4'} />
+              {isHov && subs.map((sub, si) => {
                 const subAngle = angle + ((si - (subs.length - 1) / 2) * 0.35);
                 const sx = nx + subR * Math.cos(subAngle);
                 const sy = ny + subR * Math.sin(subAngle);
-                const subName = locale === 'zh' ? sub.name_zh : locale === 'de' ? sub.name_de : sub.name;
+                const subName = isZh ? sub.name_zh : locale === 'de' ? sub.name_de : sub.name;
                 return (
                   <g key={sub.name}>
                     <line x1={nx} y1={ny} x2={sx} y2={sy} stroke="#93c5fd" strokeWidth="1" />
@@ -201,17 +306,13 @@ function IndustryHub({ industries, locale, onSelect, matchMap }: {
                   </g>
                 );
               })}
-
-              {/* Main industry node */}
               <g className="cursor-pointer" onClick={() => onSelect(ind.id)}
                 onMouseEnter={() => setHovered(ind.id)} onMouseLeave={() => setHovered(null)}>
-                <circle cx={nx} cy={ny} r={nodeR} fill={isHovered ? '#dbeafe' : 'white'}
-                  stroke={isHovered ? '#3b82f6' : '#cbd5e1'} strokeWidth={isHovered ? 2.5 : 1.5}
+                <circle cx={nx} cy={ny} r={nodeR} fill={isHov ? '#dbeafe' : 'white'}
+                  stroke={isHov ? '#3b82f6' : '#cbd5e1'} strokeWidth={isHov ? 2.5 : 1.5}
                   style={{ transition: 'all 0.2s' }} />
                 <text x={nx} y={ny - 10} textAnchor="middle" fontSize="20">{ind.icon}</text>
-                <text x={nx} y={ny + 8} textAnchor="middle" fill="#1e293b" fontSize="9" fontWeight="600">
-                  {shortName}
-                </text>
+                <text x={nx} y={ny + 8} textAnchor="middle" fill="#1e293b" fontSize="9" fontWeight="600">{shortName}</text>
                 {match > 0 ? (
                   <text x={nx} y={ny + 20} textAnchor="middle" fill={match >= 40 ? '#059669' : match >= 20 ? '#d97706' : '#6b7280'} fontSize="8" fontWeight="700">
                     {match}% match
@@ -245,34 +346,28 @@ function IndustriesPage() {
   const searchParams = useSearchParams();
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [market, setMarket] = useState<'CN' | 'DE'>('CN');
+  const [levelFilter, setLevelFilter] = useState<CareerLevel | 'all'>('all');
+  const [sortBy, setSortBy] = useState<'match' | 'salary' | 'growth'>('match');
+  const isZh = locale === 'zh';
 
-  // Handle ?focus= query param from landing page
   useEffect(() => {
     const focus = searchParams.get('focus');
-    if (focus && allIndustries.some(i => i.id === focus)) {
-      setSelectedIndustry(focus);
-    }
+    if (focus && allIndustries.some(i => i.id === focus)) setSelectedIndustry(focus);
   }, [searchParams]);
 
   const industry = selectedIndustry ? allIndustries.find(i => i.id === selectedIndustry) : null;
 
-  // Industry match map (for SVG hub and cards)
   const industryMatchMap = useMemo(() => {
     const map = new Map<string, number>();
     if (userSkills.length === 0) return map;
-    for (const ind of allIndustries) {
-      map.set(ind.id, calcIndustryMatch(userSkills, ind));
-    }
+    for (const ind of allIndustries) map.set(ind.id, calcIndustryMatch(userSkills, ind));
     return map;
   }, [userSkills]);
 
-  // Role match cache for selected industry
   const roleMatchMap = useMemo(() => {
     const map = new Map<string, number>();
     if (!industry || userSkills.length === 0) return map;
-    for (const role of industry.roles) {
-      map.set(role.id, calcRoleMatch(userSkills, role));
-    }
+    for (const role of industry.roles) map.set(role.id, calcRoleMatch(userSkills, role));
     return map;
   }, [industry, userSkills]);
 
@@ -280,19 +375,23 @@ function IndustriesPage() {
     ? Math.max(...industry.roles.flatMap(r => r.levels.map(l => market === 'CN' ? l.salary_cn.high : l.salary_de.high)))
     : 0;
 
-  // Sort roles: by match% (desc) if user has skills, else by director salary
   const sortedRoles = useMemo(() => {
     if (!industry) return [];
     return [...industry.roles].sort((a, b) => {
-      if (userSkills.length > 0) {
-        const matchDiff = (roleMatchMap.get(b.id) || 0) - (roleMatchMap.get(a.id) || 0);
-        if (matchDiff !== 0) return matchDiff;
+      if (sortBy === 'match' && userSkills.length > 0) {
+        const d = (roleMatchMap.get(b.id) || 0) - (roleMatchMap.get(a.id) || 0);
+        if (d !== 0) return d;
+      }
+      if (sortBy === 'growth') {
+        const gv = { high: 3, medium: 2, low: 1 };
+        const d = gv[b.growth_outlook] - gv[a.growth_outlook];
+        if (d !== 0) return d;
       }
       const aMax = market === 'CN' ? a.levels[4].salary_cn.mid : a.levels[4].salary_de.mid;
       const bMax = market === 'CN' ? b.levels[4].salary_cn.mid : b.levels[4].salary_de.mid;
       return bMax - aMax;
     });
-  }, [industry, userSkills, roleMatchMap, market]);
+  }, [industry, userSkills, roleMatchMap, market, sortBy]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -301,43 +400,34 @@ function IndustriesPage() {
 
         {!selectedIndustry ? (
           <>
-            {/* Hero */}
             <div className="text-center mb-6">
               <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">
-                {locale === 'zh' ? '高端制造业 · 行业图谱' : locale === 'de' ? 'Hightech-Fertigung · Branchenlandkarte' : 'Advanced Manufacturing · Industry Map'}
+                {isZh ? '高端制造业 · 行业图谱' : locale === 'de' ? 'Hightech-Fertigung · Branchenlandkarte' : 'Advanced Manufacturing · Industry Map'}
               </h1>
               <p className="text-slate-500 max-w-2xl mx-auto text-sm">
-                {locale === 'zh'
-                  ? '2026年全球高收入工程行业排名 — 选择行业，查看每个岗位从初级到总监的完整薪资阶梯'
-                  : locale === 'de'
-                    ? 'Top-Ingenieurbranchen 2026 — Wählen Sie eine Branche für vollständige Karrierestufen und Gehälter'
-                    : '2026 Top Engineering Industries — Select an industry to see complete career ladders from Junior to Director'}
+                {isZh ? '2026年全球高收入工程行业 — 选择行业查看完整薪资阶梯和技能缺口'
+                  : '2026 Top Engineering Industries — Select to see salary ladders and skill gaps'}
               </p>
               {userSkills.length > 0 && (
                 <p className="text-xs text-blue-600 mt-2">
-                  {locale === 'zh'
-                    ? `✓ 已识别 ${userSkills.length} 项技能 — 行业匹配度已根据你的技能计算`
-                    : `✓ ${userSkills.length} skills detected — industry match % calculated from your profile`}
+                  ✓ {userSkills.length} {isZh ? '项技能已识别 — 匹配度已计算' : 'skills detected — match % calculated'}
                 </p>
               )}
             </div>
 
-            {/* SVG Industry Map */}
             <IndustryHub industries={allIndustries} locale={locale} onSelect={setSelectedIndustry} matchMap={industryMatchMap} />
 
-            {/* Industry cards grid below the map */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-8">
               {[...allIndustries]
                 .sort((a, b) => {
-                  // Sort by match if available, otherwise by ranking
                   if (userSkills.length > 0) {
-                    const matchDiff = (industryMatchMap.get(b.id) || 0) - (industryMatchMap.get(a.id) || 0);
-                    if (matchDiff !== 0) return matchDiff;
+                    const d = (industryMatchMap.get(b.id) || 0) - (industryMatchMap.get(a.id) || 0);
+                    if (d !== 0) return d;
                   }
                   return a.ranking_2026 - b.ranking_2026;
                 })
                 .map(ind => {
-                  const name = locale === 'zh' ? ind.name_zh : locale === 'de' ? ind.name_de : ind.name;
+                  const name = isZh ? ind.name_zh : locale === 'de' ? ind.name_de : ind.name;
                   const match = industryMatchMap.get(ind.id) || 0;
                   return (
                     <button key={ind.id} onClick={() => setSelectedIndustry(ind.id)}
@@ -348,9 +438,7 @@ function IndustriesPage() {
                           <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">#{ind.ranking_2026}</span>
                         </div>
                         {match > 0 && (
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${match >= 40 ? 'text-emerald-700 bg-emerald-50' : match >= 20 ? 'text-amber-700 bg-amber-50' : 'text-slate-500 bg-slate-100'}`}>
-                            {match}%
-                          </span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${matchColor(match)}`}>{match}%</span>
                         )}
                       </div>
                       <h3 className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors">{name}</h3>
@@ -358,9 +446,7 @@ function IndustriesPage() {
                         <span className="font-mono text-blue-600">¥{ind.avg_salary_cn}K<span className="text-slate-400 font-normal">/月</span></span>
                         <span className="font-mono text-blue-600">€{ind.avg_salary_de}K<span className="text-slate-400 font-normal">/yr</span></span>
                       </div>
-                      <div className="text-[10px] text-slate-400 mt-1.5">
-                        {ind.roles.length} {locale === 'zh' ? '岗位' : 'roles'} · {ind.sub_categories?.length || 0} {locale === 'zh' ? '子领域' : 'sub-sectors'}
-                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1.5">{ind.roles.length} {isZh ? '岗位' : 'roles'}</div>
                     </button>
                   );
                 })}
@@ -368,10 +454,9 @@ function IndustriesPage() {
           </>
         ) : industry && (
           <>
-            {/* Back */}
             <button onClick={() => setSelectedIndustry(null)} className="text-xs text-blue-600 hover:underline mb-5 inline-flex items-center gap-1">
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-              {locale === 'zh' ? '返回行业图谱' : 'Back to Industry Map'}
+              {isZh ? '返回行业图谱' : 'Back to Industry Map'}
             </button>
 
             {/* Industry header */}
@@ -381,37 +466,31 @@ function IndustriesPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-1 flex-wrap">
                     <h1 className="text-2xl font-bold text-slate-900">
-                      {locale === 'zh' ? industry.name_zh : locale === 'de' ? industry.name_de : industry.name}
+                      {isZh ? industry.name_zh : locale === 'de' ? industry.name_de : industry.name}
                     </h1>
                     <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
-                      #{industry.ranking_2026} {locale === 'zh' ? '高薪排名' : 'Salary Rank'}
+                      #{industry.ranking_2026}
                     </span>
                     {(industryMatchMap.get(industry.id) || 0) > 0 && (
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-                        (industryMatchMap.get(industry.id) || 0) >= 40
-                          ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                          : 'text-amber-700 bg-amber-50 border-amber-200'
-                      }`}>
-                        {industryMatchMap.get(industry.id)}% {locale === 'zh' ? '技能匹配' : 'Skill Match'}
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${matchColor(industryMatchMap.get(industry.id) || 0)}`}>
+                        {industryMatchMap.get(industry.id)}% {isZh ? '技能匹配' : 'Skill Match'}
                       </span>
                     )}
                   </div>
                   <p className="text-sm text-slate-500 mb-3 max-w-2xl">
-                    {locale === 'zh' ? industry.description_zh : locale === 'de' ? industry.description_de : industry.description}
+                    {isZh ? industry.description_zh : locale === 'de' ? industry.description_de : industry.description}
                   </p>
-                  {/* Sub-categories */}
                   {industry.sub_categories && industry.sub_categories.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-3">
                       {industry.sub_categories.map(sub => (
                         <span key={sub.name} className="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-slate-100 text-slate-700 rounded-full border border-slate-200">
-                          {sub.icon} {locale === 'zh' ? sub.name_zh : locale === 'de' ? sub.name_de : sub.name}
+                          {sub.icon} {isZh ? sub.name_zh : locale === 'de' ? sub.name_de : sub.name}
                         </span>
                       ))}
                     </div>
                   )}
-                  {/* Benefits */}
                   <div className="flex flex-wrap gap-1.5">
-                    {(locale === 'zh' ? industry.top_benefits_zh : industry.top_benefits).map(b => (
+                    {(isZh ? industry.top_benefits_zh : industry.top_benefits).map(b => (
                       <span key={b} className="px-2 py-0.5 text-[10px] text-emerald-700 bg-emerald-50 rounded-full border border-emerald-200">✓ {b}</span>
                     ))}
                   </div>
@@ -419,84 +498,91 @@ function IndustriesPage() {
               </div>
             </div>
 
-            {/* Market switch */}
-            <div className="flex items-center gap-3 mb-5">
+            {/* Controls */}
+            <div className="flex flex-wrap items-center gap-3 mb-5">
               <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
                 {(['CN', 'DE'] as const).map(m => (
                   <button key={m} onClick={() => setMarket(m)}
                     className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${market === m ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>
-                    {m === 'CN' ? '🇨🇳 China (¥/月)' : '🇩🇪 Germany (€/年)'}
+                    {m === 'CN' ? '🇨🇳 ¥/月' : '🇩🇪 €/年'}
                   </button>
                 ))}
               </div>
+              {userSkills.length > 0 && (
+                <div className="inline-flex bg-white border border-slate-200 rounded-lg p-0.5">
+                  {([
+                    { v: 'match' as const, l: isZh ? '匹配度↓' : 'Match↓' },
+                    { v: 'salary' as const, l: isZh ? '薪资↓' : 'Salary↓' },
+                    { v: 'growth' as const, l: isZh ? '增长前景' : 'Growth' },
+                  ]).map(s => (
+                    <button key={s.v} onClick={() => setSortBy(s.v)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${sortBy === s.v ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>
+                      {s.l}
+                    </button>
+                  ))}
+                </div>
+              )}
               <span className="text-xs text-slate-400">
-                {industry.roles.length} {locale === 'zh' ? '个岗位' : 'roles'} × 5 {locale === 'zh' ? '个级别' : 'levels'}
+                {industry.roles.length} {isZh ? '个岗位' : 'roles'} × 5 {isZh ? '个级别' : 'levels'}
               </span>
             </div>
 
-            {/* Salary overview chart */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-6 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900 mb-1">
-                {locale === 'zh' ? '薪资全景 — 初级到总监' : 'Salary Overview — Junior to Director'}
-              </h3>
-              <p className="text-[11px] text-slate-400 mb-4">
-                {userSkills.length > 0
-                  ? (locale === 'zh' ? '按你的技能匹配度排序 · 横条显示从初级到总监的中位薪资' : 'Sorted by your skill match · Bars show median salary from Junior to Director')
-                  : (locale === 'zh' ? '横条显示每个岗位从初级(左)到总监(右)的中位薪资范围' : 'Bars show median salary range from Junior (left) to Director (right)')
-                }
-              </p>
-              <div className="space-y-2">
-                {sortedRoles.map(role => {
-                  const juniorMid = market === 'CN' ? role.levels[0].salary_cn.mid : role.levels[0].salary_de.mid;
-                  const directorMid = market === 'CN' ? role.levels[4].salary_cn.mid : role.levels[4].salary_de.mid;
-                  const title = locale === 'zh' ? role.title_zh : locale === 'de' ? role.title_de : role.title;
-                  const currency = market === 'CN' ? '¥' : '€';
-                  const pctJunior = (juniorMid / maxSalary) * 100;
-                  const pctDirector = (directorMid / maxSalary) * 100;
-                  const growthDot = role.growth_outlook === 'high' ? '🔥' : '';
-                  const roleMatch = roleMatchMap.get(role.id) || 0;
+            {/* Main content: roles + signal sidebar */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
+              <div>
+                {/* Salary overview */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-5 shadow-sm">
+                  <h3 className="text-sm font-semibold text-slate-900 mb-3">
+                    {isZh ? '薪资全景' : 'Salary Overview'}
+                  </h3>
+                  <div className="space-y-2">
+                    {sortedRoles.map(role => {
+                      const juniorMid = market === 'CN' ? role.levels[0].salary_cn.mid : role.levels[0].salary_de.mid;
+                      const directorMid = market === 'CN' ? role.levels[4].salary_cn.mid : role.levels[4].salary_de.mid;
+                      const title = isZh ? role.title_zh : locale === 'de' ? role.title_de : role.title;
+                      const currency = market === 'CN' ? '¥' : '€';
+                      const pctJ = (juniorMid / maxSalary) * 100;
+                      const pctD = (directorMid / maxSalary) * 100;
+                      const rm = roleMatchMap.get(role.id) || 0;
 
-                  return (
-                    <div key={role.id} className="flex items-center gap-3">
-                      <span className="text-xs text-slate-700 w-36 shrink-0 truncate font-medium">{growthDot}{title}</span>
-                      {roleMatch > 0 && (
-                        <span className={`text-[10px] font-bold w-10 shrink-0 text-right ${roleMatch >= 40 ? 'text-emerald-600' : roleMatch >= 20 ? 'text-amber-600' : 'text-slate-400'}`}>
-                          {roleMatch}%
-                        </span>
-                      )}
-                      <div className="flex-1 relative h-6 bg-slate-100 rounded">
-                        <div className="absolute top-0 h-full rounded bg-gradient-to-r from-blue-200 to-blue-500"
-                          style={{ left: `${pctJunior}%`, width: `${pctDirector - pctJunior}%` }} />
-                        <div className="absolute top-0 h-full flex items-center text-[10px] font-mono" style={{ left: `${pctJunior}%` }}>
-                          <span className="text-slate-500 ml-1">{currency}{juniorMid}K</span>
+                      return (
+                        <div key={role.id} className="flex items-center gap-2">
+                          <span className="text-xs text-slate-700 w-32 shrink-0 truncate font-medium">
+                            {role.growth_outlook === 'high' ? '🔥' : ''}{title}
+                          </span>
+                          {rm > 0 && <span className={`text-[10px] font-bold w-9 shrink-0 text-right ${rm >= 40 ? 'text-emerald-600' : rm >= 20 ? 'text-amber-600' : 'text-slate-400'}`}>{rm}%</span>}
+                          <div className="flex-1 relative h-5 bg-slate-100 rounded">
+                            <div className="absolute top-0 h-full rounded bg-gradient-to-r from-blue-200 to-blue-500"
+                              style={{ left: `${pctJ}%`, width: `${pctD - pctJ}%` }} />
+                            <div className="absolute top-0 h-full flex items-center text-[9px] font-mono" style={{ left: `${pctJ}%` }}>
+                              <span className="text-slate-500 ml-0.5">{currency}{juniorMid}K</span>
+                            </div>
+                            <div className="absolute top-0 h-full flex items-center justify-end text-[9px] font-mono" style={{ left: '0', width: `${pctD}%` }}>
+                              <span className="text-blue-800 font-bold mr-0.5">{currency}{directorMid}K</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="absolute top-0 h-full flex items-center justify-end text-[10px] font-mono" style={{ left: '0', width: `${pctDirector}%` }}>
-                          <span className="text-blue-800 font-bold mr-1">{currency}{directorMid}K</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-400 mt-2 ml-36 pl-3">
-                <span>{locale === 'zh' ? '← 初级' : '← Junior'}</span>
-                <span>{locale === 'zh' ? '总监 →' : 'Director →'}</span>
-              </div>
-            </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
-            {/* Role cards */}
-            <h3 className="text-sm font-semibold text-slate-900 mb-3">
-              {locale === 'zh' ? '岗位详情 — 点击展开完整薪资阶梯' : 'Role Details — Click to expand full salary ladder'}
-              {userSkills.length > 0 && (
-                <span className="text-[11px] text-blue-600 font-normal ml-2">
-                  ({locale === 'zh' ? '按匹配度排序' : 'sorted by match %'})
-                </span>
-              )}
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {sortedRoles.map(role => (
-                <RoleCard key={role.id} role={role} market={market} locale={locale} maxSalary={maxSalary} matchPct={roleMatchMap.get(role.id) || 0} />
-              ))}
+                {/* Role cards */}
+                <h3 className="text-sm font-semibold text-slate-900 mb-3">
+                  {isZh ? '岗位详情 — 展开查看薪资阶梯和技能差距' : 'Role Details — Expand for salary ladder & skill gaps'}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {sortedRoles.map(role => (
+                    <RoleCard key={role.id} role={role} market={market} locale={locale} maxSalary={maxSalary}
+                      matchPct={roleMatchMap.get(role.id) || 0} userSkills={userSkills} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Signal sidebar */}
+              <div className="space-y-4">
+                <SignalSidebar industryId={industry.id} locale={locale} />
+              </div>
             </div>
           </>
         )}

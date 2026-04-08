@@ -19,19 +19,19 @@ export function Navbar() {
   ];
 
   return (
-    <nav className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border">
-      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="font-bold text-lg gradient-text">{t(locale, 'site_name')}</Link>
+    <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200">
+      <div className="max-w-6xl mx-auto px-4 h-12 flex items-center justify-between">
+        <div className="flex items-center gap-5">
+          <Link href="/" className="font-bold text-base text-blue-600">🔬 {t(locale, 'site_name')}</Link>
           {links.map(l => (
             <Link key={l.href} href={l.href}
-              className={`text-sm transition-colors ${pathname === l.href ? 'text-foreground font-medium' : 'text-muted hover:text-foreground'}`}>
+              className={`text-sm transition-colors ${pathname === l.href || pathname?.startsWith(l.href) ? 'text-slate-900 font-medium' : 'text-slate-500 hover:text-slate-900'}`}>
               {l.label}
             </Link>
           ))}
         </div>
         <button onClick={() => setLocale(nextLocale)}
-          className="px-3 py-1 text-xs border border-border rounded-full text-muted hover:text-foreground hover:border-accent transition-colors">
+          className="px-3 py-1 text-xs border border-slate-200 rounded-full text-slate-500 hover:text-slate-900 hover:border-blue-400 transition-colors">
           {nextLabel}
         </button>
       </div>
