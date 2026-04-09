@@ -11,6 +11,26 @@ import { t } from '@/lib/i18n';
 import { allIndustries } from '@/lib/career-map';
 import { mockNews } from '@/lib/ai/mock-signals';
 import type { IndustryCareerMap, CareerRole, CareerLevel } from '@/lib/career-map';
+import { getRoleDataLinks } from '@/lib/data-sources';
+import { getEntgeltatlasUrl } from '@/lib/data-sources';
+import { SalaryDistribution } from '@/components/ui/SalaryDistribution';
+import { ArbitrageMap } from '@/components/ArbitrageMap';
+import { TransitionStories } from '@/components/TransitionStories';
+import { chinaJobs } from '@/lib/jobs-cn';
+import { germanyJobs } from '@/lib/jobs-de';
+import type { Job } from '@/lib/data';
+
+/* ─── BLS inline data type ─── */
+interface BLSInline {
+  annual_mean: number;
+  annual_median: number;
+  annual_10th: number;
+  annual_25th: number;
+  annual_75th: number;
+  annual_90th: number;
+  employment: number;
+  url: string;
+}
 
 const LEVEL_LABELS: Record<CareerLevel, { en: string; zh: string; de: string }> = {
   junior: { en: 'Junior', zh: '初级', de: 'Junior' },
@@ -93,9 +113,33 @@ function RoleCard({ role, industryId, market, locale, maxSalary, matchPct, userS
   role: CareerRole; industryId: string; market: 'CN' | 'DE'; locale: 'en' | 'de' | 'zh'; maxSalary: number; matchPct: number; userSkills: string[];
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [blsData, setBlsData] = useState<BLSInline | null>(null);
+  const [blsLoading, setBlsLoading] = useState(false);
   const isZh = locale === 'zh';
   const title = isZh ? role.title_zh : locale === 'de' ? role.title_de : role.title;
   const funcArea = isZh ? role.function_area_zh : role.function_area;
+
+  // Fetch BLS data when expanded
+  useEffect(() => {
+    if (!expanded || blsData || blsLoading) return;
+    setBlsLoading(true);
+    fetch(`/api/data/bls?soc=${role.soc_code}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.data) setBlsData({
+          annual_mean: d.data.annual_mean,
+          annual_median: d.data.annual_median,
+          annual_10th: d.data.annual_10th,
+          annual_25th: d.data.annual_25th ?? d.data.annual_10th,
+          annual_75th: d.data.annual_75th ?? d.data.annual_90th,
+          annual_90th: d.data.annual_90th,
+          employment: d.data.employment,
+          url: d.data.attribution?.url || '',
+        });
+      })
+      .catch(() => {})
+      .finally(() => setBlsLoading(false));
+  }, [expanded, blsData, blsLoading, role.soc_code]);
   const currency = market === 'CN' ? '¥' : '€';
   const unit = market === 'CN' ? '/月' : '/yr';
 
@@ -129,25 +173,26 @@ function RoleCard({ role, industryId, market, locale, maxSalary, matchPct, userS
               </svg>
             </div>
           </div>
-          <div className="flex items-end gap-[3px] h-8">
-            {role.levels.map((lv, i) => {
-              const salary = market === 'CN' ? lv.salary_cn : lv.salary_de;
-              const height = (salary.mid / maxSalary) * 100;
-              const colors = ['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb'];
-              return (
-                <div key={lv.level} className="flex-1 flex flex-col items-center">
-                  <span className="text-[8px] font-mono text-slate-400 mb-0.5">{currency}{salary.mid}K</span>
-                  <div className="w-full rounded-t-sm" style={{ height: `${Math.max(height * 0.32, 3)}px`, background: colors[i] }} />
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex gap-0 mt-0.5">
-            {LEVELS.map(l => (
-              <span key={l} className="flex-1 text-center text-[8px] text-slate-400">
-                {isZh ? LEVEL_LABELS[l].zh : LEVEL_LABELS[l].en}
-              </span>
-            ))}
+          {/* Percentile distribution bar — career salary trajectory */}
+          {(() => {
+            const salaries = role.levels.map(lv => market === 'CN' ? lv.salary_cn : lv.salary_de);
+            // Map career levels to percentiles: junior.low→P10, junior.mid→P25, lead.mid→P50, manager.mid→P75, director.high→P90
+            const p10 = salaries[0].low;
+            const p25 = salaries[0].mid;
+            const med = salaries[2].mid;   // lead level
+            const p75 = salaries[3].mid;   // manager level
+            const p90 = salaries[4].high;  // director high
+            return (
+              <SalaryDistribution
+                data={[{ p10, p25, median: med, p75, p90, currency, unit: market === 'CN' ? 'K/月' : 'K/yr' }]}
+                compact
+              />
+            );
+          })()}
+          <div className="flex justify-between text-[8px] text-slate-400 font-mono mt-0.5">
+            <span>{isZh ? '初级' : 'Jr'}</span>
+            <span>{isZh ? '主管' : 'Lead'}</span>
+            <span>{isZh ? '总监' : 'Dir'}</span>
           </div>
         </button>
         {/* Cart button */}
@@ -199,7 +244,7 @@ function RoleCard({ role, industryId, market, locale, maxSalary, matchPct, userS
           <div className="space-y-2">
             <div className="grid grid-cols-[90px_1fr_auto] gap-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
               <span>{isZh ? '级别' : 'Level'}</span>
-              <span>{isZh ? '薪资范围' : 'Salary'} ({currency}K{unit})</span>
+              <span>{isZh ? '薪资分布' : 'Salary Distribution'} <span className="font-normal text-slate-400">P25 · P50 · P75</span></span>
               <span>{isZh ? '经验' : 'Exp'}</span>
             </div>
             {role.levels.map(lv => {
@@ -218,6 +263,82 @@ function RoleCard({ role, industryId, market, locale, maxSalary, matchPct, userS
                 </div>
               );
             })}
+          </div>
+
+          {/* ─── Global Benchmark Panel ─── */}
+          <div className="bg-white border border-blue-100 rounded-xl p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
+                {isZh ? '全球数据对标' : locale === 'de' ? 'Globaler Datenvergleich' : 'Global Benchmark'}
+              </span>
+              <div className="flex items-center gap-1.5 text-[9px] text-slate-400">
+                <span className="font-mono">SOC {role.soc_code}</span>
+                <span>·</span>
+                <span className="font-mono">KldB {role.kldb_code}</span>
+              </div>
+            </div>
+
+            {/* BLS US salary — real data */}
+            <div className="flex items-stretch gap-2">
+              <div className="flex-1 bg-blue-50 border border-blue-100 rounded-lg p-2.5">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="text-xs">🇺🇸</span>
+                  <span className="text-[10px] font-bold text-blue-900">US BLS</span>
+                  {blsLoading && <span className="text-[9px] text-blue-400 animate-pulse">loading...</span>}
+                </div>
+                {blsData ? (
+                  <div>
+                    <div className="text-lg font-bold text-blue-900 font-mono">${(blsData.annual_median / 1000).toFixed(0)}K<span className="text-[10px] font-normal text-blue-500">/yr median</span></div>
+                    <div className="mt-2">
+                      <SalaryDistribution data={[{
+                        p10: Math.round(blsData.annual_10th / 1000),
+                        p25: Math.round(blsData.annual_25th / 1000),
+                        median: Math.round(blsData.annual_median / 1000),
+                        p75: Math.round(blsData.annual_75th / 1000),
+                        p90: Math.round(blsData.annual_90th / 1000),
+                        currency: '$',
+                        unit: 'K/yr',
+                      }]} compact />
+                    </div>
+                    <div className="text-[10px] text-blue-500 mt-1.5 font-mono">
+                      {(blsData.employment / 1000).toFixed(0)}K {isZh ? '就业' : 'employed'}
+                    </div>
+                  </div>
+                ) : !blsLoading ? (
+                  <div className="text-[10px] text-blue-400">{isZh ? '无数据' : 'No data available'}</div>
+                ) : null}
+              </div>
+
+              <div className="flex-1 bg-emerald-50 border border-emerald-100 rounded-lg p-2.5">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="text-xs">🇩🇪</span>
+                  <span className="text-[10px] font-bold text-emerald-900">BA Entgeltatlas</span>
+                </div>
+                <a href={getEntgeltatlasUrl(role.kldb_code)} target="_blank" rel="noopener noreferrer"
+                  className="block">
+                  <div className="text-sm font-bold text-emerald-800">
+                    {isZh ? '查看德国官方薪资' : locale === 'de' ? 'Offizielle Gehaltsdaten' : 'View official DE salary'}
+                  </div>
+                  <div className="text-[10px] text-emerald-600 mt-0.5">
+                    KldB {role.kldb_code} · {isZh ? '含地区/性别/年龄分布' : 'by region, gender, age'}
+                  </div>
+                  <div className="text-[9px] text-emerald-400 mt-1 hover:underline">
+                    entgeltatlas.arbeitsagentur.de →
+                  </div>
+                </a>
+              </div>
+            </div>
+
+            {/* Quick links row */}
+            <div className="flex flex-wrap gap-1.5">
+              {Object.values(getRoleDataLinks(role.soc_code, role.kldb_code)).map(link => (
+                <a key={link.url} href={link.url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-medium bg-slate-50 border border-slate-200 rounded hover:border-blue-300 hover:bg-blue-50 transition-colors text-slate-500 hover:text-blue-700">
+                  <span>{link.icon}</span>
+                  <span>{isZh ? link.label_zh : link.label}</span>
+                </a>
+              ))}
+            </div>
           </div>
 
           <div>
@@ -402,7 +523,11 @@ function IndustriesPage() {
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [market, setMarket] = useState<'CN' | 'DE'>('CN');
   const [sortBy, setSortBy] = useState<'match' | 'salary' | 'growth'>('match');
+  const [showArbitrage, setShowArbitrage] = useState(false);
   const isZh = locale === 'zh';
+
+  // All jobs for the scatter plot
+  const allJobs: Job[] = useMemo(() => [...chinaJobs, ...germanyJobs], []);
 
   useEffect(() => {
     const focus = searchParams.get('focus');
@@ -474,7 +599,50 @@ function IndustriesPage() {
 
             <IndustryHub industries={allIndustries} locale={locale} onSelect={setSelectedIndustry} matchMap={industryMatchMap} />
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-8">
+            {/* Arbitrage Map — global scatter plot */}
+            <div className="mt-8 mb-6">
+              <button
+                onClick={() => setShowArbitrage(!showArbitrage)}
+                className="w-full flex items-center justify-between bg-white border border-slate-200 rounded-xl px-5 py-3 hover:border-blue-300 hover:shadow-md transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">📊</span>
+                  <div className="text-left">
+                    <span className="text-sm font-bold text-slate-900 group-hover:text-blue-700">
+                      {isZh ? '职业套利象限图' : 'Career Arbitrage Map'}
+                    </span>
+                    <span className="block text-[11px] text-slate-500">
+                      {isZh ? '用供需张力×薪资定位最优岗位 — 200个岗位的风险溢价分析' : 'Position optimal roles by demand tension × salary — risk premium analysis of 200 roles'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Market toggle */}
+                  <div className="inline-flex bg-slate-100 rounded-lg p-0.5" onClick={e => e.stopPropagation()}>
+                    {(['CN', 'DE'] as const).map(m => (
+                      <button key={m} onClick={() => setMarket(m)}
+                        className={`px-3 py-1 rounded-md text-[10px] font-medium transition-all ${market === m ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>
+                        {m === 'CN' ? '🇨🇳 CN' : '🇩🇪 DE'}
+                      </button>
+                    ))}
+                  </div>
+                  <svg className={`w-4 h-4 text-slate-400 transition-transform ${showArbitrage ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+
+              {showArbitrage && (
+                <div className="mt-3">
+                  <ArbitrageMap jobs={allJobs} locale={locale} market={market} />
+                </div>
+              )}
+            </div>
+
+            {/* Transition Stories */}
+            <TransitionStories locale={locale} />
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {[...allIndustries]
                 .sort((a, b) => {
                   if (userSkills.length > 0) {

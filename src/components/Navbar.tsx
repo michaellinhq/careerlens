@@ -8,6 +8,7 @@ import { type Locale } from '@/lib/i18n';
 
 const NAV: Record<string, Record<Locale, string>> = {
   '/industries': { en: 'Industries & Jobs', de: 'Branchen & Jobs', zh: '去哪里' },
+  '/assess':     { en: 'Self Assessment',   de: 'Selbstanalyse',   zh: '认识自己' },
   '/plan':       { en: 'Action Plan',       de: 'Aktionsplan',     zh: '怎么去' },
   '/market':     { en: 'Market Map',        de: 'Marktkarte',      zh: '开始走' },
 };

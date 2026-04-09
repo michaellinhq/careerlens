@@ -21,6 +21,8 @@ export interface CareerRole {
   title: string;
   title_zh: string;
   title_de: string;
+  soc_code: string;              // O*NET SOC code, e.g. '17-2112.00'
+  kldb_code: string;             // German KldB 2010, e.g. '27214' (5th digit: 1=Helfer,2=Fachkraft,3=Spezialist,4=Experte)
   function_area: string;         // e.g. "Quality", "Engineering", "Supply Chain"
   function_area_zh: string;
   core_skills: string[];         // skills common to all levels

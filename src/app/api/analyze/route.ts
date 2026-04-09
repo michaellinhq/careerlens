@@ -26,18 +26,31 @@ const SYSTEM_PROMPT = `你是一位资深制造业人力资源顾问，专注于
   "level": "senior",
   "level_zh": "高级工程师",
   "years_experience": 8,
+  "soc_code": "17-2112.00",
+  "soc_title": "Industrial Engineers",
   "core_competencies": ["IATF 16949", "FMEA", "SPC", "VDA 6.3"],
   "languages": [{"language": "Chinese", "level": "Native"}, {"language": "English", "level": "C1"}],
   "summary": "Experienced automotive quality professional...",
   "summary_zh": "资深汽车质量专家...",
   "cross_industry": [
-    {"industry_id": "medical-devices", "reason": "Quality systems (ISO 13485) overlap significantly with automotive IATF", "reason_zh": "质量体系(ISO 13485)与汽车IATF高度重合"},
-    {"industry_id": "aerospace", "reason": "AS9100 shares DNA with automotive quality standards", "reason_zh": "AS9100与汽车质量标准同源"}
+    {"industry_id": "medical-devices", "soc_code": "17-2112.00", "reason": "Quality systems (ISO 13485) overlap significantly with automotive IATF", "reason_zh": "质量体系(ISO 13485)与汽车IATF高度重合"},
+    {"industry_id": "aerospace", "soc_code": "17-2112.00", "reason": "AS9100 shares DNA with automotive quality standards", "reason_zh": "AS9100与汽车质量标准同源"}
   ]
 }
 
 level必须是: junior, senior, lead, manager, director 之一。
 industry_id必须是: automotive, electronics, aerospace, consulting, energy, industrial-automation, medical-devices, it-manufacturing, robotics 之一。
+soc_code是O*NET标准职业代码（格式: XX-XXXX.XX），选择最匹配此人当前岗位的SOC代码。常见制造业SOC代码：
+- 17-2112.00 Industrial Engineers (质量/工艺/IE)
+- 17-2141.00 Mechanical Engineers (机械设计)
+- 17-2071.00 Electrical Engineers (电气)
+- 17-2072.00 Electronics Engineers (电子)
+- 17-2011.00 Aerospace Engineers (航空航天)
+- 17-2031.00 Bioengineers/Biomedical Engineers (生物医学)
+- 15-1252.00 Software Developers (软件)
+- 13-1111.00 Management Analysts (咨询)
+- 11-9041.00 Architectural/Engineering Managers (工程管理)
+cross_industry的soc_code是目标行业中最匹配角色的SOC代码。
 core_competencies用英文技能名（与行业标准一致）。
 summary用2-3句话概括此人的职业竞争力和发展潜力。`;
 

@@ -11,6 +11,7 @@ import { t, type Locale } from '@/lib/i18n';
 import { getToolMapEntries, mapJobIndustryToToolMapIndustry } from '@/lib/toolmap';
 import type { IndustryToolMapEntry } from '@/lib/toolmap';
 import { trackUrl } from '@/lib/tracking';
+import { getGermanTrainingLinks } from '@/lib/data-sources';
 
 function ToolMapCard({ entry, locale }: { entry: IndustryToolMapEntry; locale: Locale }) {
   const [open, setOpen] = useState(false);
@@ -78,6 +79,27 @@ function ToolMapCard({ entry, locale }: { entry: IndustryToolMapEntry; locale: L
               </div>
             </div>
           )}
+
+          {/* KURSNET / BA Weiterbildung links */}
+          {(() => {
+            const deLinks = getGermanTrainingLinks(entry.skill);
+            return (
+              <div className="flex flex-wrap gap-2">
+                <a href={deLinks.kursnet.url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-500/10 rounded-lg border border-emerald-500/20 hover:border-emerald-400 transition-colors">
+                  <span>🎓</span>
+                  <span className="font-medium text-emerald-400">{locale === 'de' ? deLinks.kursnet.label_de : locale === 'zh' ? deLinks.kursnet.label_zh : deLinks.kursnet.label}</span>
+                  <span className="text-[9px]">🇩🇪</span>
+                </a>
+                <a href={deLinks.weiterbildung.url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[10px] bg-emerald-500/10 rounded-lg border border-emerald-500/20 hover:border-emerald-400 transition-colors">
+                  <span>📚</span>
+                  <span className="font-medium text-emerald-400">{locale === 'de' ? deLinks.weiterbildung.label_de : locale === 'zh' ? deLinks.weiterbildung.label_zh : deLinks.weiterbildung.label}</span>
+                  <span className="text-[9px]">🇩🇪</span>
+                </a>
+              </div>
+            );
+          })()}
 
           {/* GitHub Path */}
           {entry.github_path.length > 0 && (
