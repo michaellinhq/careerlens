@@ -10,23 +10,55 @@ import { allIndustries } from '@/lib/career-map';
 import { calcRoleMatch } from '@/lib/resume-parser';
 import { skillCategories } from '@/lib/data';
 import { analyzeSuperposition, getAiReplacementRate } from '@/lib/superposition';
-import type { SuperpositionState } from '@/lib/superposition';
+import { getRoleDataLinks } from '@/lib/data-sources';
 import { useCart } from '@/lib/cart-context';
 import { parseResumeFile, SUPPORTED_FORMATS, FORMAT_LABEL } from '@/lib/file-parser';
 import { generateFollowUps, calculatePrecision } from '@/lib/follow-up-questions';
 import type { FollowUpQuestion } from '@/lib/follow-up-questions';
-import type { Locale } from '@/lib/i18n';
 import { Navbar } from '@/components/Navbar';
+import { trackEvent } from '@/lib/tracking';
+import { formatRangeK } from '@/lib/format';
 
 /* ─── i18n ─── */
 const ui = {
   en: {
-    hero: 'Who Am I?',
-    heroSub: 'Career Intelligence for Engineers',
-    sub: 'Paste your resume — AI analyzes your career profile, skills, and market value across 9 industries.',
+    heroEyebrow: 'For manufacturing engineers moving across roles, industries, and markets',
+    hero: 'Paste one resume. See which higher-value roles your background can already move toward.',
+    heroSub: 'CareerLens maps your experience into nearby opportunity clusters, then shows the shortest bridge to get there.',
+    sub: 'Start with one resume. Get your nearest opportunity directions, key gaps, and the next realistic move.',
+    heroPrimary: 'Start Path Builder',
+    heroSecondary: 'Analyze Resume',
+    heroSignals: ['Reverse career model', 'Cross-industry transfer detection', 'CN + DE salary intelligence'],
+    heroNarrativeTitle: 'From background to next move',
+    heroNarrativeSteps: [
+      { title: 'Read what you already have', body: 'Resume, languages, tools, standards, and functional strengths.' },
+      { title: 'Reveal better-fit opportunities', body: 'Not just keyword matches, but roles with stronger value and transferability.' },
+      { title: 'Turn the gap into a plan', body: 'Skills, tools, certifications, projects, and estimated time.' },
+      { title: 'See where to land', body: 'Cities, companies, and market entry points in China and Germany.' },
+    ],
+    outputsTitle: 'What the first analysis gives you',
+    outputs: [
+      'A readable career profile from your manufacturing background',
+      'Cross-industry roles that your current skills can already support',
+      'Visible skill gaps, estimated learning effort, and salary upside',
+      'A path from opportunity discovery to plan and market landing',
+    ],
+    differenceTitle: 'Why this feels different',
+    differencePoints: [
+      { title: 'Manufacturing-native', body: 'Built around quality, process, automation, electronics, and engineering reality.' },
+      { title: 'Cross-market by design', body: 'Maps Chinese backgrounds into German and international industrial demand.' },
+      { title: 'Action, not inspiration', body: 'You leave with a route, not just a personality label or job list.' },
+    ],
+    analyzerTitle: 'Start here',
+    analyzerSub: 'Paste resume text or upload a PDF. We map your background into the nearest opportunity clusters instead of forcing a perfect industry label.',
+    analyzerTrust: ['Rules-first mapping with optional AI enhancement', 'Supports resume text and exported PDFs', 'Built for manufacturing career moves'],
+    trustTitle: 'Why this step is useful',
+    workspaceLabel: 'Career analysis workspace',
+    workspaceTitle: 'Career Move Analysis',
+    workspaceHint: 'Profile → opportunity → plan',
     placeholder: 'Paste your resume or describe your experience here...\n\nExample:\n• 8 years automotive quality engineer at Tier-1 supplier (Magna)\n• IATF 16949 lead auditor, FMEA, SPC, VDA 6.3\n• CATIA V5, SolidWorks, GD&T\n• Lean Manufacturing, Six Sigma Green Belt\n• Python data analysis, SQL, Power BI\n• German B1, English fluent',
-    analyze: 'Analyze My Career Profile',
-    skip: 'Skip — browse industries directly',
+    analyze: 'Map My Background',
+    skip: 'Open Opportunity Map',
     analyzing: 'AI is analyzing your career profile...',
     profileTitle: 'Your Career Profile',
     level: 'Level',
@@ -37,13 +69,13 @@ const ui = {
     crossIndustry: 'Cross-Industry Potential',
     skillRadar: 'Skill Radar',
     marketValue: 'Market Valuation',
-    matchMatrix: 'Industry × Role Match Matrix',
-    matrixHint: 'Click any industry to explore roles and add them to your plan',
+    matchMatrix: 'Where Your Background Can Transfer',
+    matrixHint: 'Start with rows marked strong fit or bridgeable fit, then open that industry to see target roles.',
     editResume: 'Edit Resume',
     stats: ['9 Industries', '60+ Roles', '5 Career Levels', 'CN + DE Markets'],
-    footer: 'Data from BLS, O*NET, Eurostat, Hays, Michael Page. Free & open source.',
-    aiPowered: 'Powered by Qwen AI',
-    rulesPowered: 'Skill matching (AI available when API key configured)',
+    footer: 'Data from BLS, O*NET, Eurostat, Hays, Michael Page. CareerLens combines curated datasets, rules, and optional AI extraction.',
+    aiPowered: 'Rules-first mapping with optional AI enhancement',
+    rulesPowered: 'Rules-first mapping. AI only turns on when a server key is configured.',
     noSkills: 'Could not identify skills. Try adding more detail about your tools, certifications, and experience.',
     perMonth: '/mo',
     perYear: '/yr',
@@ -53,7 +85,7 @@ const ui = {
     ctaBtn: 'Explore Industries & Jobs',
     salaryEstimate: 'Estimated salary range',
     skillCoverage: 'Skill coverage',
-    topMatch: 'Best match industry',
+    topMatch: 'Closest opportunity cluster',
     empowering: 'Your experience is more valuable than you think',
     empoweringZh: '',
     tabPaste: 'Paste Text',
@@ -73,8 +105,8 @@ const ui = {
     scanStep2c: ' industries',
     scanStep3: 'Superposition detected!',
     scanStep4: 'Full analysis ready',
-    precision: 'Analysis Depth',
-    precisionHint: 'Answer follow-up questions to increase precision',
+    precision: 'Personalization Depth',
+    precisionHint: 'Answer follow-up questions to personalize the result',
     followUpTitle: 'Smart Follow-Up',
     followUpSub: 'A few targeted questions to sharpen your analysis',
     followUpSkip: 'Skip — results are good enough',
@@ -82,12 +114,43 @@ const ui = {
     salaryNarrow: 'Salary estimate narrows as precision increases',
   },
   de: {
-    hero: 'Wer bin ich?',
-    heroSub: 'Karriere-Intelligenz für Ingenieure',
-    sub: 'Lebenslauf einfügen — KI analysiert dein Profil, Fähigkeiten und Marktwert in 9 Branchen.',
+    heroEyebrow: 'Für Fertigungsingenieurinnen und -ingenieure über Rollen, Branchen und Märkte hinweg',
+    hero: 'Füge einen Lebenslauf ein und sieh sofort, welche höherwertigen Rollen dein Hintergrund schon tragen kann.',
+    heroSub: 'CareerLens übersetzt deine Erfahrung in nahe Opportunitätscluster und zeigt die kürzeste Brücke dorthin.',
+    sub: 'Ein Lebenslauf reicht für nächste Richtungen, Kernlücken und einen realistischen Schritt.',
+    heroPrimary: 'Pfad starten',
+    heroSecondary: 'Lebenslauf analysieren',
+    heroSignals: ['Reverse Career Model', 'Branchenübergreifende Wechselpfade', 'Gehaltsintelligenz für CN + DE'],
+    heroNarrativeTitle: 'Vom Hintergrund zum nächsten Zug',
+    heroNarrativeSteps: [
+      { title: 'Vorhandene Stärken lesen', body: 'Lebenslauf, Sprachen, Tools, Standards und Funktionsprofil.' },
+      { title: 'Bessere Chancen sichtbar machen', body: 'Nicht nur Keyword-Matches, sondern Rollen mit mehr Wert und Wechselpotenzial.' },
+      { title: 'Die Lücke in einen Plan übersetzen', body: 'Skills, Tools, Zertifikate, Projekte und geschätzter Zeitbedarf.' },
+      { title: 'Den Zielmarkt sehen', body: 'Städte, Unternehmen und Einstiegspunkte in China und Deutschland.' },
+    ],
+    outputsTitle: 'Was die erste Analyse liefert',
+    outputs: [
+      'Ein verständliches Karriereprofil aus deinem Fertigungshintergrund',
+      'Branchenübergreifende Rollen, die durch vorhandene Skills erreichbar sind',
+      'Sichtbare Skill-Lücken, Lernaufwand und mögliches Gehaltsplus',
+      'Einen Weg von der Chance bis zum Plan und Zielmarkt',
+    ],
+    differenceTitle: 'Warum es sich anders anfühlt',
+    differencePoints: [
+      { title: 'Für Fertigung gebaut', body: 'Qualität, Prozesse, Automatisierung, Elektronik und echte Ingenieurarbeit stehen im Zentrum.' },
+      { title: 'Grenzüberschreitend gedacht', body: 'Übersetzt chinesische Hintergründe in deutsche und internationale Industrienachfrage.' },
+      { title: 'Handlungsorientiert', body: 'Du gehst mit einem Weg heraus, nicht nur mit einem Label oder einer Liste.' },
+    ],
+    analyzerTitle: 'Hier beginnen',
+    analyzerSub: 'Text einfügen oder PDF hochladen. Wir ordnen deinen Hintergrund dem nächsten Chancencluster zu, statt dich starr einer Branche zuzuschreiben.',
+    analyzerTrust: ['Regelbasierte Zuordnung mit optionaler KI-Erweiterung', 'Unterstützt Lebenslauftext und exportierte PDFs', 'Für Karrierewechsel in der Fertigung gebaut'],
+    trustTitle: 'Warum dieser Schritt nützlich ist',
+    workspaceLabel: 'Karriere-Arbeitsbereich',
+    workspaceTitle: 'Karrierewechsel-Analyse',
+    workspaceHint: 'Profil → Chance → Plan',
     placeholder: 'Lebenslauf oder Erfahrung hier einfügen...\n\nBeispiel:\n• 8 Jahre Qualitätsingenieur Automotive bei Tier-1 (Magna)\n• IATF 16949, FMEA, SPC, VDA 6.3\n• CATIA V5, SolidWorks, GD&T\n• Lean, Six Sigma Green Belt\n• Python, SQL, Power BI\n• Deutsch B1, Englisch fließend',
-    analyze: 'Karriereprofil analysieren',
-    skip: 'Überspringen — Branchen direkt ansehen',
+    analyze: 'Hintergrund zuordnen',
+    skip: 'Chancenkarte öffnen',
     analyzing: 'KI analysiert dein Karriereprofil...',
     profileTitle: 'Dein Karriereprofil',
     level: 'Stufe',
@@ -98,13 +161,13 @@ const ui = {
     crossIndustry: 'Branchenübergreifendes Potenzial',
     skillRadar: 'Kompetenz-Radar',
     marketValue: 'Marktwert',
-    matchMatrix: 'Branche × Rolle Match-Matrix',
-    matrixHint: 'Klicke auf eine Branche für Details und füge Rollen zum Plan hinzu',
+    matchMatrix: 'Wohin dein Hintergrund übertragbar ist',
+    matrixHint: 'Starte mit Zeilen, die als starker Fit oder gut überbrückbar markiert sind.',
     editResume: 'Lebenslauf bearbeiten',
     stats: ['9 Branchen', '60+ Rollen', '5 Karrierestufen', 'CN + DE Märkte'],
-    footer: 'Daten von BLS, O*NET, Eurostat, Hays, Michael Page. Kostenlos & Open Source.',
-    aiPowered: 'Powered by Qwen KI',
-    rulesPowered: 'Skill-Matching (KI verfügbar mit API-Key)',
+    footer: 'Daten von BLS, O*NET, Eurostat, Hays, Michael Page. CareerLens kombiniert kuratierte Datensätze, Regeln und optionale KI-Extraktion.',
+    aiPowered: 'Regelbasierte Zuordnung mit optionaler KI-Erweiterung',
+    rulesPowered: 'Regelbasierte Zuordnung. KI wird nur mit Server-Key aktiviert.',
     noSkills: 'Keine Skills erkannt. Mehr Details zu Tools, Zertifikaten und Erfahrung hinzufügen.',
     perMonth: '/Mo',
     perYear: '/Jahr',
@@ -114,7 +177,7 @@ const ui = {
     ctaBtn: 'Branchen & Jobs erkunden',
     salaryEstimate: 'Geschätztes Gehalt',
     skillCoverage: 'Kompetenzabdeckung',
-    topMatch: 'Beste Branche',
+    topMatch: 'Nächstes Chancencluster',
     empowering: 'Deine Erfahrung ist wertvoller als du denkst',
     empoweringZh: '',
     tabPaste: 'Text einfügen',
@@ -133,8 +196,8 @@ const ui = {
     scanStep2c: ' Branchen gefunden',
     scanStep3: 'Superposition erkannt!',
     scanStep4: 'Vollständige Analyse bereit',
-    precision: 'Analysetiefe',
-    precisionHint: 'Beantworte Rückfragen für präzisere Ergebnisse',
+    precision: 'Personalisierungstiefe',
+    precisionHint: 'Rückfragen beantworten, um das Ergebnis stärker zu personalisieren',
     followUpTitle: 'Intelligente Rückfragen',
     followUpSub: 'Gezielte Fragen für eine schärfere Analyse',
     followUpSkip: 'Überspringen — Ergebnisse sind ausreichend',
@@ -142,12 +205,43 @@ const ui = {
     salaryNarrow: 'Gehaltsschätzung wird mit steigender Präzision genauer',
   },
   zh: {
-    hero: '我是谁？',
-    heroSub: '工程师职业情报平台',
-    sub: '粘贴简历 — AI分析你的职业画像、技能和市场价值。',
+    heroEyebrow: '面向制造业工程师的跨岗位、跨行业、跨市场职业跃迁引擎',
+    hero: '贴一份简历，先看你的背景已经能转向哪些更高价值岗位。',
+    heroSub: 'CareerLens 会把你的经验映射到最接近的机会产业簇，再告诉你最短还差哪几步。',
+    sub: '从一份简历开始，先得到方向，再看缺口和下一步动作。',
+    heroPrimary: '从起点生成路径',
+    heroSecondary: '已有简历分析',
+    heroSignals: ['逆向职业模型', '跨行业迁移识别', '中德双市场薪资情报'],
+    heroNarrativeTitle: '从当前背景到下一步',
+    heroNarrativeSteps: [
+      { title: '读懂你已经拥有的东西', body: '简历、语言、工具、标准体系和职能优势。' },
+      { title: '发现更值得去的机会', body: '不是只做关键词匹配，而是找更高价值、可迁移的岗位。' },
+      { title: '把差距拆成计划', body: '技能、工具、证书、项目，以及预计投入时间。' },
+      { title: '看到最终落点', body: '中国和德国的城市、公司与进入市场的切入口。' },
+    ],
+    outputsTitle: '第一次分析会给你什么',
+    outputs: [
+      '把制造业背景翻译成可读的职业画像',
+      '找出你现有技能已经能支撑的跨行业机会',
+      '看见技能缺口、预估投入时间和潜在薪资提升',
+      '把机会、计划和落点市场串成一条路径',
+    ],
+    differenceTitle: '为什么它和普通求职工具不一样',
+    differencePoints: [
+      { title: '制造业原生', body: '围绕质量、工艺、自动化、电子与工程岗位真实语境构建。' },
+      { title: '跨市场映射', body: '把中国背景翻译成德国和国际制造业可理解的能力结构。' },
+      { title: '从判断走向行动', body: '给你的不是一句结论，而是一条可执行的职业跃迁路径。' },
+    ],
+    analyzerTitle: '从这里开始',
+    analyzerSub: '支持粘贴文本或上传 PDF。系统会把你的背景映射到最接近的机会产业簇，而不是强行说你只属于某个行业。',
+    analyzerTrust: ['规则优先，AI 只是可选增强', '支持简历文本与导出 PDF', '专为制造业职业迁移设计'],
+    trustTitle: '为什么先做这一步',
+    workspaceLabel: '职业分析工作台',
+    workspaceTitle: '职业跃迁分析',
+    workspaceHint: '画像 → 机会 → 计划',
     placeholder: '在此粘贴简历或描述你的经验...\n\n示例：\n• 8年一级供应商(麦格纳)汽车质量工程师\n• IATF 16949主任审核员, FMEA, SPC, VDA 6.3\n• CATIA V5, SolidWorks, GD&T\n• 精益生产, 六西格玛绿带\n• Python数据分析, SQL, Power BI\n• 德语B1, 英语流利',
-    analyze: 'AI分析我的职业画像',
-    skip: '跳过 — 直接浏览行业',
+    analyze: '开始机会映射',
+    skip: '打开机会地图',
     analyzing: 'AI正在分析你的职业画像...',
     profileTitle: '你的职业画像',
     level: '级别',
@@ -158,13 +252,13 @@ const ui = {
     crossIndustry: '跨行业潜力',
     skillRadar: '技能雷达',
     marketValue: '市场估值',
-    matchMatrix: '行业 × 岗位匹配矩阵',
-    matrixHint: '点击行业探索岗位，将目标岗位加入你的职业计划',
+    matchMatrix: '你的背景最容易迁移到哪里',
+    matrixHint: '先看“强适配”或“可桥接”的方向，再点进去看岗位与计划。',
     editResume: '修改简历',
     stats: ['9大行业', '60+岗位', '5级职业阶梯', '中德双市场'],
-    footer: '数据来源：BLS, O*NET, Eurostat, Hays, Michael Page。免费开源。',
-    aiPowered: '由通义千问AI驱动',
-    rulesPowered: '技能匹配模式（配置API密钥后启用AI）',
+    footer: '数据来源：BLS, O*NET, Eurostat, Hays, Michael Page。CareerLens 将精选数据、规则引擎和可选 AI 提取结合在一起。',
+    aiPowered: '规则优先，AI 只做增强解释',
+    rulesPowered: '规则优先分析；只有服务端配置密钥时才启用 AI。',
     noSkills: '未识别到技能。请添加更多关于工具、证书和工作经验的描述。',
     perMonth: '/月',
     perYear: '/年',
@@ -174,7 +268,7 @@ const ui = {
     ctaBtn: '去看行业与岗位',
     salaryEstimate: '预估薪资范围',
     skillCoverage: '技能覆盖率',
-    topMatch: '最匹配行业',
+    topMatch: '最接近的机会产业簇',
     empowering: '你的经验比你想象的更有价值',
     empoweringZh: '',
     tabPaste: '粘贴文本',
@@ -193,8 +287,8 @@ const ui = {
     scanStep2c: ' 个行业',
     scanStep3: '检测到能力叠加态！',
     scanStep4: '完整分析就绪',
-    precision: '分析精度',
-    precisionHint: '回答追问可提升分析精度',
+    precision: '个性化深度',
+    precisionHint: '回答追问，让结果更贴近你的真实背景',
     followUpTitle: '智能追问',
     followUpSub: '几个精准问题，让诊断更深入',
     followUpSkip: '跳过 — 当前结果已足够',
@@ -202,6 +296,68 @@ const ui = {
     salaryNarrow: '精度越高，薪资预估越窄',
   },
 };
+
+type FitTone = 'strong' | 'bridgeable' | 'adjacent' | 'stretch';
+
+function skillSignalsMatch(userSkill: string, roleSkill: string): boolean {
+  const user = userSkill.toLowerCase();
+  const role = roleSkill.toLowerCase();
+  return (
+    user.includes(role) ||
+    role.includes(user) ||
+    user.replace(/[/()]/g, ' ').includes(role.replace(/[/()]/g, ' '))
+  );
+}
+
+function getFitTone(rawMatch: number, matchedCoreCount: number): FitTone {
+  if (matchedCoreCount >= 3 || rawMatch >= 28) return 'strong';
+  if (matchedCoreCount >= 2 || rawMatch >= 12) return 'bridgeable';
+  if (matchedCoreCount >= 1 || rawMatch >= 5) return 'adjacent';
+  return 'stretch';
+}
+
+function getFitToneClasses(tone: FitTone): string {
+  switch (tone) {
+    case 'strong':
+      return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+    case 'bridgeable':
+      return 'bg-blue-100 text-blue-800 border border-blue-200';
+    case 'adjacent':
+      return 'bg-amber-100 text-amber-800 border border-amber-200';
+    default:
+      return 'bg-slate-100 text-slate-600 border border-slate-200';
+  }
+}
+
+function getFitLabel(locale: string, tone: FitTone): string {
+  const labels: Record<FitTone, { en: string; de: string; zh: string }> = {
+    strong: { en: 'Strong fit', de: 'Starker Fit', zh: '强适配' },
+    bridgeable: { en: 'Bridgeable fit', de: 'Gut überbrückbar', zh: '可桥接' },
+    adjacent: { en: 'Adjacent fit', de: 'Angrenzend', zh: '相邻方向' },
+    stretch: { en: 'Stretch option', de: 'Stretch-Ziel', zh: '探索方向' },
+  };
+  return labels[tone][locale as 'en' | 'de' | 'zh'] || labels[tone].en;
+}
+
+function getFitHint(locale: string, matchedCoreCount: number, missingCoreCount: number): string {
+  if (locale === 'zh') return `已命中 ${matchedCoreCount} 个核心信号 · 还差约 ${missingCoreCount} 项桥接技能`;
+  if (locale === 'de') return `${matchedCoreCount} Kernsignale erkannt · ca. ${missingCoreCount} Brückenskills fehlen noch`;
+  return `${matchedCoreCount} core signals detected · ~${missingCoreCount} bridge skills left`;
+}
+
+function getRoleFitSnapshot(userSkills: string[], role: { core_skills: string[]; levels: { key_skills: string[] }[] }) {
+  const matchedCore = role.core_skills.filter(roleSkill =>
+    userSkills.some(userSkill => skillSignalsMatch(userSkill, roleSkill)),
+  );
+  const rawMatch = calcRoleMatch(userSkills, role);
+  const tone = getFitTone(rawMatch, matchedCore.length);
+  return {
+    rawMatch,
+    matchedCoreCount: matchedCore.length,
+    missingCoreCount: Math.max(role.core_skills.length - matchedCore.length, 0),
+    tone,
+  };
+}
 
 /* ─── Analysis Depth Bar ─── */
 function AnalysisDepthBar({ precision, locale, onBoost }: {
@@ -214,10 +370,10 @@ function AnalysisDepthBar({ precision, locale, onBoost }: {
   const color = precision >= 80 ? 'bg-emerald-500' : precision >= 60 ? 'bg-blue-500' : 'bg-amber-500';
   const textColor = precision >= 80 ? 'text-emerald-700' : precision >= 60 ? 'text-blue-700' : 'text-amber-700';
   const label = precision >= 80
-    ? (isZh ? '高精度分析' : isDe ? 'Hochpräzise Analyse' : 'High-Precision Analysis')
+    ? (isZh ? '高个性化结果' : isDe ? 'Stark personalisiert' : 'Highly Personalized')
     : precision >= 60
-    ? (isZh ? '增强分析' : isDe ? 'Erweiterte Analyse' : 'Enhanced Analysis')
-    : (isZh ? '基础分析' : isDe ? 'Basisanalyse' : 'Basic Analysis');
+    ? (isZh ? '增强个性化' : isDe ? 'Mehr Personalisierung' : 'More Personalized')
+    : (isZh ? '基础结论' : isDe ? 'Grundlegendes Ergebnis' : 'Baseline Result');
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
@@ -245,6 +401,109 @@ function AnalysisDepthBar({ precision, locale, onBoost }: {
   );
 }
 
+function DataMethodSection({ locale }: { locale: string }) {
+  const isZh = locale === 'zh';
+  const isDe = locale === 'de';
+  const cards = isZh
+    ? [
+        { title: '制造业岗位图谱', body: '不是泛职业工具，而是围绕制造、质量、自动化、电子与中德迁移场景构建。', tone: 'bg-blue-50 border-blue-200 text-blue-900' },
+        { title: '官方数据锚点', body: '结果会回链到 O*NET、BLS、德国 Entgeltatlas 等外部数据源做验证。', tone: 'bg-emerald-50 border-emerald-200 text-emerald-900' },
+        { title: '规则优先，不是黑箱', body: 'AI 负责提取简历信息，岗位映射和技能差距优先由规则和结构化数据驱动。', tone: 'bg-amber-50 border-amber-200 text-amber-900' },
+      ]
+    : isDe
+    ? [
+        { title: 'Manufacturing-natives Modell', body: 'Kein generischer Karriere-Test, sondern für Fertigung, Qualität, Automatisierung, Elektronik und CN-DE-Wechsel gebaut.', tone: 'bg-blue-50 border-blue-200 text-blue-900' },
+        { title: 'Offizielle Datenanker', body: 'Ergebnisse verlinken auf O*NET, BLS und den deutschen Entgeltatlas, damit Zahlen prüfbar bleiben.', tone: 'bg-emerald-50 border-emerald-200 text-emerald-900' },
+        { title: 'Regeln vor Black Box', body: 'KI extrahiert den Lebenslauf, aber Rollenlogik und Skill-Lücken bleiben primär regel- und datengetrieben.', tone: 'bg-amber-50 border-amber-200 text-amber-900' },
+      ]
+    : [
+        { title: 'Manufacturing-native model', body: 'Built around quality, process, automation, electronics, and CN-DE transitions rather than generic career advice.', tone: 'bg-blue-50 border-blue-200 text-blue-900' },
+        { title: 'Official data anchors', body: 'Results link out to O*NET, BLS, and Germany’s Entgeltatlas so users can verify the numbers.', tone: 'bg-emerald-50 border-emerald-200 text-emerald-900' },
+        { title: 'Rules before black box', body: 'AI extracts resume context, but role logic and skill gaps stay grounded in structured rules and datasets.', tone: 'bg-amber-50 border-amber-200 text-amber-900' },
+      ];
+
+  return (
+    <section className="pt-8 border-t border-slate-200">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 mb-4">
+        {isZh ? '为什么你可以相信这个结果' : isDe ? 'Warum man dem Ergebnis trauen kann' : 'Why this is believable'}
+      </div>
+      <div className="grid gap-3">
+        {cards.map(card => (
+          <div key={card.title} className={`rounded-2xl border px-4 py-4 ${card.tone}`}>
+            <h3 className="text-sm font-semibold">{card.title}</h3>
+            <p className="mt-1 text-sm leading-6 opacity-80">{card.body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function OfferPathSection({ locale, onStart, onConsult }: { locale: string; onStart: () => void; onConsult: () => void }) {
+  const isZh = locale === 'zh';
+  const isDe = locale === 'de';
+  const left = isZh
+    ? {
+        title: '免费探索路径',
+        body: '适合先验证自己能迁移到哪里：上传简历，拿到机会、缺口、行动计划和市场落点。',
+        cta: '先做免费分析',
+      }
+    : isDe
+    ? {
+        title: 'Kostenlos erkunden',
+        body: 'Für Nutzer, die erst verstehen wollen, wohin ihr Profil bereits übertragbar ist: Analyse, Chancen, Skill-Lücken und Zielmarkt.',
+        cta: 'Mit Gratis-Analyse starten',
+      }
+    : {
+        title: 'Free exploration',
+        body: 'Best if you first want to see where your profile already transfers: analysis, opportunities, skill gaps, and market landing.',
+        cta: 'Start free analysis',
+      };
+
+  const right = isZh
+    ? {
+        title: '顾问评审路径',
+        body: '适合已经有结果，但想更快确认目标岗位、优先技能顺序和中德落点的人。',
+        cta: '获取顾问评审',
+      }
+    : isDe
+    ? {
+        title: 'Beratungsreview',
+        body: 'Für Nutzer mit ersten Ergebnissen, die Zielrolle, Skill-Reihenfolge und Marktlandung schneller absichern wollen.',
+        cta: 'Beratungsreview anfragen',
+      }
+    : {
+        title: 'Advisor review',
+        body: 'Best if you already have results and want a faster judgment on target roles, skill order, and China-Germany landing.',
+        cta: 'Get advisor review',
+      };
+
+  return (
+    <section className="mt-10 grid gap-4 md:grid-cols-2">
+      <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{left.title}</div>
+        <p className="mt-3 text-sm leading-6 text-slate-600">{left.body}</p>
+        <button
+          onClick={onStart}
+          className="mt-5 inline-flex items-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+        >
+          {left.cta}
+        </button>
+      </article>
+      <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{right.title}</div>
+        <p className="mt-3 text-sm leading-6 text-slate-600">{right.body}</p>
+        <button
+          onClick={onConsult}
+          className="mt-5 inline-flex items-center rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-slate-900 transition-colors"
+        >
+          {right.cta}
+        </button>
+      </article>
+    </section>
+  );
+}
+
 /* ─── Follow-Up Dialog ─── */
 function FollowUpDialog({ questions, locale, onAnswer, onSkip }: {
   questions: FollowUpQuestion[];
@@ -254,9 +513,7 @@ function FollowUpDialog({ questions, locale, onAnswer, onSkip }: {
 }) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [textInput, setTextInput] = useState('');
-  const [answered, setAnswered] = useState<Set<string>>(new Set());
   const c = ui[locale as keyof typeof ui];
-  const isZh = locale === 'zh';
 
   if (questions.length === 0 || currentIdx >= questions.length) return null;
 
@@ -266,7 +523,6 @@ function FollowUpDialog({ questions, locale, onAnswer, onSkip }: {
   const handleSubmit = (answer: string) => {
     if (!answer.trim()) return;
     onAnswer(q.id, answer);
-    setAnswered(prev => new Set(prev).add(q.id));
     setTextInput('');
     if (currentIdx < questions.length - 1) {
       setCurrentIdx(currentIdx + 1);
@@ -351,7 +607,6 @@ function ScanReveal({ step, skills, locale }: {
   step: number; skills: string[]; locale: string;
 }) {
   const c = ui[locale as keyof typeof ui];
-  const isZh = locale === 'zh';
 
   // Count industries that have matching skills
   const matchedIndustries = useMemo(() => {
@@ -493,12 +748,16 @@ function MarketValuation({ skills, profile, locale, c, precision = 100 }: {
 
   // Find best matching industry and its top role
   const bestMatch = useMemo(() => {
-    let best = { industry: allIndustries[0], match: 0, topRole: allIndustries[0].roles[0], roleMatch: 0 };
+    let best = {
+      industry: allIndustries[0],
+      topRole: allIndustries[0].roles[0],
+      fit: getRoleFitSnapshot(skills, allIndustries[0].roles[0]),
+    };
     for (const ind of allIndustries) {
       for (const role of ind.roles) {
-        const m = calcRoleMatch(skills, role);
-        if (m > best.roleMatch) {
-          best = { industry: ind, match: m, topRole: role, roleMatch: m };
+        const fit = getRoleFitSnapshot(skills, role);
+        if (fit.rawMatch > best.fit.rawMatch) {
+          best = { industry: ind, topRole: role, fit };
         }
       }
     }
@@ -544,13 +803,13 @@ function MarketValuation({ skills, profile, locale, c, precision = 100 }: {
             <div className="bg-slate-50 rounded-xl p-3">
               <div className="text-[10px] text-slate-400 mb-0.5">🇨🇳 China</div>
               <div className="text-lg font-bold text-blue-700 transition-all duration-500">
-                ¥{salaryCN?.low}K-{salaryCN?.high}K<span className="text-xs text-slate-400 font-normal">{c.perMonth}</span>
+                {salaryCN ? formatRangeK(salaryCN.low, salaryCN.high, '¥') : '—'}<span className="text-xs text-slate-400 font-normal">{c.perMonth}</span>
               </div>
             </div>
             <div className="bg-slate-50 rounded-xl p-3">
               <div className="text-[10px] text-slate-400 mb-0.5">🇩🇪 Germany</div>
               <div className="text-lg font-bold text-blue-700 transition-all duration-500">
-                €{salaryDE?.low}K-{salaryDE?.high}K<span className="text-xs text-slate-400 font-normal">{c.perYear}</span>
+                {salaryDE ? formatRangeK(salaryDE.low, salaryDE.high, '€') : '—'}<span className="text-xs text-slate-400 font-normal">{c.perYear}</span>
               </div>
             </div>
           </div>
@@ -576,8 +835,13 @@ function MarketValuation({ skills, profile, locale, c, precision = 100 }: {
               <div className="text-sm font-semibold text-slate-900">
                 {isZh ? bestMatch.industry.name_zh : bestMatch.industry.name}
               </div>
-              <div className="text-xs text-slate-500">
-                {isZh ? bestMatch.topRole.title_zh : bestMatch.topRole.title} — {bestMatch.roleMatch}% match
+              <div className="mt-1 flex items-center gap-2 flex-wrap">
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${getFitToneClasses(bestMatch.fit.tone)}`}>
+                  {getFitLabel(locale, bestMatch.fit.tone)}
+                </span>
+                <span className="text-xs text-slate-500">
+                  {isZh ? bestMatch.topRole.title_zh : bestMatch.topRole.title}
+                </span>
               </div>
             </div>
           </div>
@@ -606,11 +870,13 @@ function ProfileCard({ profile, locale, c }: { profile: CareerProfile; locale: s
       </p>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <div className="bg-slate-50 rounded-xl p-3">
-          <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">{isZh ? '行业背景' : 'Industry'}</div>
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+            {isZh ? '最接近的机会产业簇' : locale === 'de' ? 'Nächstes Chancencluster' : 'Closest opportunity cluster'}
+          </div>
           <div className="text-sm font-semibold text-slate-900">{isZh ? profile.industry_zh : profile.industry}</div>
         </div>
         <div className="bg-slate-50 rounded-xl p-3">
-          <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">{isZh ? '职能方向' : 'Function'}</div>
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">{isZh ? '当前能力重心' : locale === 'de' ? 'Aktueller Schwerpunkt' : 'Current capability focus'}</div>
           <div className="text-sm font-semibold text-slate-900">{isZh ? profile.function_area_zh : profile.function_area}</div>
         </div>
         <div className="bg-slate-50 rounded-xl p-3">
@@ -643,7 +909,9 @@ function ProfileCard({ profile, locale, c }: { profile: CareerProfile; locale: s
         </div>
         {profile.cross_industry.length > 0 && (
           <div>
-            <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">{c.crossIndustry}</div>
+            <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-1.5">
+              {isZh ? '其他相邻机会产业簇' : locale === 'de' ? 'Weitere benachbarte Chancencluster' : 'Other nearby opportunity clusters'}
+            </div>
             <div className="space-y-1">
               {profile.cross_industry.map(ci => {
                 const ind = allIndustries.find(i => i.id === ci.industry_id);
@@ -870,7 +1138,7 @@ function SuperpositionPanel({ skills, profile, locale }: {
       </p>
 
       <div className="space-y-3">
-        {states.map((s, idx) => {
+        {states.map(s => {
           const inCart = isInCart(s.role.id);
           return (
             <div key={s.role.id} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
@@ -892,7 +1160,13 @@ function SuperpositionPanel({ skills, profile, locale }: {
                     {isZh ? `差${s.gapCount}个技能` : `${s.gapCount} skill${s.gapCount > 1 ? 's' : ''} away`}
                   </span>
                   <button
-                    onClick={() => { inCart ? router.push('/plan') : addToCart(s.role.id, s.industry.id); }}
+                    onClick={() => {
+                      if (inCart) {
+                        router.push('/plan');
+                        return;
+                      }
+                      addToCart(s.role.id, s.industry.id);
+                    }}
                     className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
                       inCart
                         ? 'bg-blue-600 text-white'
@@ -983,60 +1257,169 @@ function MatchMatrix({ skills, locale, c, onNavigate }: {
 }) {
   const isZh = locale === 'zh';
   const matrix = allIndustries.map(ind => {
-    const roleMatches = ind.roles.map(r => ({
-      role: r,
-      match: calcRoleMatch(skills, r),
-    })).sort((a, b) => b.match - a.match);
+    const roleMatches = ind.roles.map(role => {
+      const fit = getRoleFitSnapshot(skills, role);
+      return { role, fit };
+    }).sort((a, b) => b.fit.rawMatch - a.fit.rawMatch);
     const topRoles = roleMatches.slice(0, 3);
-    const industryMatch = topRoles.length > 0
-      ? Math.round(topRoles.reduce((s, r) => s + r.match, 0) / topRoles.length)
-      : 0;
-    return { ind, industryMatch, topRoles };
-  }).sort((a, b) => b.industryMatch - a.industryMatch);
-
-  const matchColor = (m: number) =>
-    m >= 60 ? 'bg-emerald-500 text-white' :
-    m >= 40 ? 'bg-emerald-100 text-emerald-800' :
-    m >= 20 ? 'bg-amber-100 text-amber-800' :
-    m > 0 ? 'bg-slate-100 text-slate-500' :
-    'bg-slate-50 text-slate-300';
+    const bestFit = topRoles[0]?.fit ?? { rawMatch: 0, matchedCoreCount: 0, missingCoreCount: 0, tone: 'stretch' as FitTone };
+    return { ind, bestFit, topRoles };
+  }).sort((a, b) => b.bestFit.rawMatch - a.bestFit.rawMatch);
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
       <h2 className="text-lg font-bold text-slate-900 mb-1">{c.matchMatrix}</h2>
       <p className="text-xs text-slate-400 mb-4">{c.matrixHint}</p>
       <div className="space-y-3">
-        {matrix.map(({ ind, industryMatch, topRoles }) => (
+        {matrix.map(({ ind, bestFit, topRoles }) => (
           <div key={ind.id} className="border border-slate-100 rounded-xl p-3 hover:border-blue-200 transition-colors">
             <button onClick={() => onNavigate(ind.id)} className="w-full text-left">
               <div className="flex items-center gap-3 mb-2">
                 <span className="text-xl">{ind.icon}</span>
                 <span className="text-sm font-bold text-slate-900">{isZh ? ind.name_zh : ind.name}</span>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${matchColor(industryMatch)}`}>
-                  {industryMatch}%
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${getFitToneClasses(bestFit.tone)}`}>
+                  {getFitLabel(locale, bestFit.tone)}
                 </span>
                 <span className="text-[10px] text-slate-400 ml-auto">
                   ¥{ind.avg_salary_cn}K{c.perMonth} · €{ind.avg_salary_de}K{c.perYear}
                 </span>
               </div>
+              <div className="text-[11px] text-slate-500 mb-2">
+                {getFitHint(locale, bestFit.matchedCoreCount, bestFit.missingCoreCount)}
+              </div>
             </button>
             <div className="grid grid-cols-3 gap-2">
-              {topRoles.map(({ role, match }) => (
+              {topRoles.map(({ role, fit }) => (
                 <button key={role.id} onClick={() => onNavigate(ind.id)}
                   className="text-left p-2 rounded-lg bg-slate-50 hover:bg-blue-50 transition-colors">
                   <div className="flex items-center gap-1.5 mb-1">
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${matchColor(match)}`}>{match}%</span>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${getFitToneClasses(fit.tone)}`}>
+                      {getFitLabel(locale, fit.tone)}
+                    </span>
                     {role.growth_outlook === 'high' && <span className="text-[10px]">🔥</span>}
                   </div>
                   <div className="text-xs font-medium text-slate-800 truncate">{isZh ? role.title_zh : role.title}</div>
-                  <div className="text-[10px] text-slate-400">
-                    ¥{role.levels[1]?.salary_cn.mid || '?'}K-{role.levels[4]?.salary_cn.mid || '?'}K
+                  <div className="mt-1 text-[10px] text-slate-500">
+                    {getFitHint(locale, fit.matchedCoreCount, fit.missingCoreCount)}
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-1">
+                    {formatRangeK(role.levels[1]?.salary_cn.mid || 0, role.levels[4]?.salary_cn.mid || 0, '¥')}
                   </div>
                 </button>
               ))}
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ResultEvidencePanel({ skills, profile, locale, mode, precision }: {
+  skills: string[];
+  profile: CareerProfile;
+  locale: string;
+  mode: 'ai' | 'rules' | null;
+  precision: number;
+}) {
+  const isZh = locale === 'zh';
+  const isDe = locale === 'de';
+  const bestMatch = useMemo(() => {
+    let best = { industry: allIndustries[0], role: allIndustries[0].roles[0], fit: getRoleFitSnapshot(skills, allIndustries[0].roles[0]) };
+    for (const ind of allIndustries) {
+      for (const role of ind.roles) {
+        const fit = getRoleFitSnapshot(skills, role);
+        if (fit.rawMatch > best.fit.rawMatch) best = { industry: ind, role, fit };
+      }
+    }
+    return best;
+  }, [skills]);
+  const dataLinks = getRoleDataLinks(bestMatch.role.soc_code, bestMatch.role.kldb_code);
+  const matchedSkills = bestMatch.role.core_skills.filter(skill =>
+    skills.some(userSkill => userSkill.toLowerCase().includes(skill.toLowerCase()) || skill.toLowerCase().includes(userSkill.toLowerCase())),
+  );
+  const missingSkills = bestMatch.role.core_skills.filter(skill => !matchedSkills.includes(skill));
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            {isZh ? '为什么系统会这样判断' : isDe ? 'Warum dieses Ergebnis zustande kommt' : 'Why the system says this'}
+          </div>
+          <h2 className="mt-2 text-base font-bold text-slate-900">
+            {isZh ? '这是一个“可解释的结论”，不是只看关键词的黑箱匹配。' : isDe ? 'Das ist ein erklärbares Ergebnis, kein Black-Box-Keyword-Match.' : 'This is an explainable result, not a black-box keyword match.'}
+          </h2>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
+            {isZh ? '提取方式' : isDe ? 'Extraktion' : 'Extraction'}: {mode === 'ai' ? 'AI' : isZh ? '规则' : isDe ? 'Regeln' : 'Rules'}
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
+            {isZh ? '当前能力重心' : isDe ? 'Aktueller Schwerpunkt' : 'Current focus'}: {isZh ? profile.function_area_zh : profile.function_area}
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
+            {isZh ? '个性化深度' : isDe ? 'Personalisierung' : 'Personalization'}: {precision}%
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              {isZh ? '最接近的下一步机会' : isDe ? 'Nächste starke Chance' : 'Closest next opportunity'}
+            </div>
+          <div className="mt-2 text-sm font-semibold text-slate-900">
+            {isZh ? bestMatch.role.title_zh : isDe ? bestMatch.role.title_de : bestMatch.role.title}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${getFitToneClasses(bestMatch.fit.tone)}`}>
+              {getFitLabel(locale, bestMatch.fit.tone)}
+            </span>
+            <span className="text-xs text-slate-500">
+              {isZh ? bestMatch.industry.name_zh : isDe ? bestMatch.industry.name_de : bestMatch.industry.name}
+            </span>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            {isZh ? '为什么匹配' : isDe ? 'Warum passend' : 'Why it matches'}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {matchedSkills.slice(0, 5).map(skill => (
+              <span key={skill} className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-700">
+                {skill}
+              </span>
+            ))}
+            {matchedSkills.length === 0 && (
+              <span className="text-xs text-slate-400">{isZh ? '需要更多背景信息' : isDe ? 'Mehr Kontext nötig' : 'Needs more background context'}</span>
+            )}
+          </div>
+          <div className="mt-2 text-xs text-slate-500">
+            {isZh ? `桥接技能约 ${missingSkills.length} 项` : isDe ? `Brückenskills: ca. ${missingSkills.length}` : `Bridge skills: ~${missingSkills.length}`}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            {isZh ? '证据链' : isDe ? 'Datenkette' : 'Evidence trail'}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {Object.values(dataLinks).slice(0, 3).map(link => (
+              <a
+                key={link.url}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] text-slate-600 hover:border-blue-300 hover:text-blue-700 transition-colors"
+              >
+                {link.icon} {isZh ? link.label_zh : link.label}
+              </a>
+            ))}
+          </div>
+          <div className="mt-2 text-xs text-slate-500">
+            {isZh ? '结论来自：简历提取 + 规则映射 + 外部薪资/职业标准数据' : isDe ? 'Ergebnis aus Lebenslauf-Extraktion + Regel-Logik + externen Gehalts-/Berufsdaten' : 'Built from resume extraction + rules mapping + external salary/occupation datasets'}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1068,6 +1451,7 @@ export default function LandingPage() {
 
   const handleAnalyze = useCallback(async () => {
     if (!resumeText.trim()) return;
+    trackEvent('homepage_analyze_start', { locale, inputTab });
     setPhase('loading');
     try {
       const result = await analyzeResume(resumeText);
@@ -1095,7 +1479,7 @@ export default function LandingPage() {
     } catch {
       setPhase('input');
     }
-  }, [resumeText, setUserSkills]);
+  }, [inputTab, locale, resumeText, setUserSkills]);
 
   const handleFile = useCallback(async (file: File) => {
     setFileStatus('loading');
@@ -1124,159 +1508,262 @@ export default function LandingPage() {
   }, [handleFile]);
 
   const handleNavigate = useCallback((industryId: string) => {
+    trackEvent('homepage_industry_navigate', { locale, industryId });
     router.push(`/industries?focus=${industryId}`);
   }, [router]);
+
+  const handleScrollToAnalyzer = useCallback(() => {
+    trackEvent('homepage_scroll_to_analyzer', { locale });
+    document.getElementById('resume-analyzer')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  }, [locale]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar />
 
-      {/* Hero */}
-      <header className="flex flex-col items-center px-4 pt-10 pb-4">
-        <div className="text-3xl mb-2">🔬</div>
-        <h1 className="text-2xl md:text-3xl font-bold text-center text-slate-900 mb-1">
-          {c.hero}
-        </h1>
-        <p className="text-sm text-blue-600 font-medium mb-2">{c.heroSub}</p>
-        <p className="text-slate-500 text-center max-w-xl text-sm mb-3">{c.sub}</p>
-        <div className="flex flex-wrap justify-center gap-2">
-          {c.stats.map(s => (
-            <span key={s} className="px-2.5 py-1 bg-white rounded-full text-[10px] text-slate-500 border border-slate-200">{s}</span>
-          ))}
-        </div>
-      </header>
+      {phase === 'input' ? (
+        <header className="relative overflow-hidden border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.18),_transparent_42%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.16),_transparent_38%),linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)]">
+          <div className="max-w-4xl mx-auto px-4 py-12 md:py-14">
+            <div className="max-w-3xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-blue-200 bg-white/80 text-[11px] font-medium text-blue-700 mb-5">
+                <span>🔬</span>
+                <span>{c.heroEyebrow}</span>
+              </div>
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-slate-950 leading-[1.05]">
+                {c.hero}
+              </h1>
+              <p className="mt-5 max-w-2xl text-base md:text-lg text-slate-600 leading-8">
+                {c.heroSub}
+              </p>
+              <p className="mt-3 max-w-xl text-sm text-slate-500 leading-6">
+                {c.sub}
+              </p>
+
+              <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => {
+                    trackEvent('homepage_hero_path_builder', { locale });
+                    router.push('/path');
+                  }}
+                  className="px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  {c.heroPrimary}
+                </button>
+                <button
+                  onClick={handleScrollToAnalyzer}
+                  className="px-6 py-3 bg-white text-slate-700 text-sm font-semibold rounded-xl border border-slate-200 hover:border-blue-300 hover:text-slate-900 transition-colors"
+                >
+                  {c.heroSecondary}
+                </button>
+              </div>
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                {c.analyzerTrust.map(item => (
+                  <div key={item} className="rounded-2xl border border-slate-200 bg-white/85 px-4 py-3 text-sm text-slate-600">
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </header>
+      ) : (
+        <header className="border-b border-slate-200 bg-white/90 backdrop-blur-md">
+          <div className="max-w-5xl mx-auto px-4 py-6">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              {c.workspaceLabel}
+            </div>
+            <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-semibold text-slate-950">{c.workspaceTitle}</h1>
+                <p className="text-sm text-slate-500 mt-1">{c.workspaceHint}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {c.stats.map(s => (
+                  <span key={s} className="px-2.5 py-1 rounded-full bg-slate-100 text-[10px] text-slate-500 border border-slate-200">
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </header>
+      )}
 
       {/* Main */}
-      <main className="flex-1 px-4 pb-10">
-        <div className="max-w-5xl mx-auto">
+      <main className="flex-1 px-4 pb-10 md:pb-14">
+        <div className={`${phase === 'input' ? 'max-w-6xl' : 'max-w-5xl'} mx-auto`}>
 
           {/* Phase: Input */}
           {phase === 'input' && (
-            <div className="space-y-4 mt-4">
-              {/* Input tabs */}
-              <div className="flex bg-white border border-slate-200 rounded-lg p-0.5 w-fit mx-auto">
-                {([
-                  { id: 'paste' as const, label: c.tabPaste, icon: '📝' },
-                  { id: 'upload' as const, label: c.tabUpload, icon: '📄' },
-                  { id: 'url' as const, label: c.tabUrl, icon: '🔗' },
-                ]).map(tab => (
-                  <button key={tab.id} onClick={() => setInputTab(tab.id)}
-                    className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${inputTab === tab.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>
-                    {tab.icon} {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Tab: Paste */}
-              {inputTab === 'paste' && (
-                <div
-                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={handleDrop}
-                  className={`relative transition-all ${dragOver ? 'ring-2 ring-blue-400 ring-offset-2 rounded-xl' : ''}`}
-                >
-                  <textarea
-                    value={resumeText}
-                    onChange={e => setResumeText(e.target.value)}
-                    placeholder={c.placeholder}
-                    className="w-full h-56 md:h-64 p-4 bg-white border border-slate-200 rounded-xl text-slate-900 text-sm leading-relaxed placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-none shadow-sm"
-                  />
-                  {dragOver && (
-                    <div className="absolute inset-0 bg-blue-50/90 border-2 border-dashed border-blue-400 rounded-xl flex items-center justify-center">
-                      <p className="text-sm font-medium text-blue-700">{c.dropHint}</p>
-                    </div>
-                  )}
-                  {fileStatus === 'success' && fileName && (
-                    <p className="text-xs text-emerald-600 mt-1">✓ {c.uploadSuccess}: {fileName}</p>
-                  )}
-                </div>
-              )}
-
-              {/* Tab: Upload */}
-              {inputTab === 'upload' && (
-                <label
-                  onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={handleDrop}
-                  className={`flex flex-col items-center justify-center w-full h-56 md:h-64 bg-white border-2 border-dashed rounded-xl cursor-pointer transition-all ${
-                    dragOver ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50'
-                  }`}
-                >
-                  <input type="file" accept={SUPPORTED_FORMATS} onChange={handleFileInput} className="hidden" />
-                  {fileStatus === 'loading' ? (
-                    <div className="flex flex-col items-center">
-                      <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
-                      <p className="text-sm text-slate-500">{fileName}</p>
-                    </div>
-                  ) : fileStatus === 'success' ? (
-                    <div className="flex flex-col items-center">
-                      <div className="text-3xl mb-2">✓</div>
-                      <p className="text-sm font-medium text-emerald-700">{c.uploadSuccess}</p>
-                      <p className="text-xs text-slate-500 mt-1">{fileName}</p>
-                      <p className="text-xs text-blue-600 mt-2">{locale === 'zh' ? '已提取文本，点击"分析"开始' : 'Text extracted. Click Analyze to start.'}</p>
-                    </div>
-                  ) : fileStatus === 'error' ? (
-                    <div className="flex flex-col items-center">
-                      <div className="text-3xl mb-2">✗</div>
-                      <p className="text-sm text-red-600">{c.uploadError}</p>
-                      <p className="text-xs text-slate-400 mt-2">{c.dropFormats}</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center">
-                      <div className="text-4xl mb-3">📄</div>
-                      <p className="text-sm font-medium text-slate-700">{c.dropHint}</p>
-                      <p className="text-xs text-slate-400 mt-2">{c.dropFormats}</p>
-                    </div>
-                  )}
-                </label>
-              )}
-
-              {/* Tab: URL (guidance) */}
-              {inputTab === 'url' && (
-                <div className="bg-white border border-slate-200 rounded-xl p-6">
-                  <div className="text-center mb-4">
-                    <div className="text-3xl mb-2">🔗</div>
-                    <p className="text-sm text-slate-700 leading-relaxed max-w-md mx-auto">{c.urlHint}</p>
+            <div className="max-w-4xl mx-auto py-10 md:py-12">
+              <section
+                id="resume-analyzer"
+                className="bg-white border border-slate-200 rounded-3xl p-6 md:p-7 shadow-[0_20px_60px_rgba(15,23,42,0.06)]"
+              >
+                <div className="mb-6">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 mb-3">
+                    {c.workspaceLabel}
                   </div>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
-                    <p className="text-xs font-medium text-blue-800 mb-2">{c.urlExportGuide}</p>
-                    <div className="flex justify-center gap-3 text-xs">
-                      <span className="px-3 py-1.5 bg-white rounded-lg border border-blue-200 text-blue-700">1. LinkedIn</span>
-                      <span className="text-blue-400">→</span>
-                      <span className="px-3 py-1.5 bg-white rounded-lg border border-blue-200 text-blue-700">2. {locale === 'zh' ? '更多' : 'More'}</span>
-                      <span className="text-blue-400">→</span>
-                      <span className="px-3 py-1.5 bg-white rounded-lg border border-blue-200 text-blue-700">3. {locale === 'zh' ? '保存为PDF' : 'Save as PDF'}</span>
+                  <h2 className="text-2xl font-semibold text-slate-950">{c.analyzerTitle}</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">{c.analyzerSub}</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex bg-slate-50 border border-slate-200 rounded-xl p-1 w-fit">
+                    {([
+                      { id: 'paste' as const, label: c.tabPaste, icon: '📝' },
+                      { id: 'upload' as const, label: c.tabUpload, icon: '📄' },
+                      { id: 'url' as const, label: c.tabUrl, icon: '🔗' },
+                    ]).map(tab => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setInputTab(tab.id)}
+                        className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
+                          inputTab === tab.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                        }`}
+                      >
+                        {tab.icon} {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {inputTab === 'paste' && (
+                    <div
+                      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={handleDrop}
+                      className={`relative transition-all ${dragOver ? 'ring-2 ring-blue-400 ring-offset-2 rounded-2xl' : ''}`}
+                    >
+                      <textarea
+                        value={resumeText}
+                        onChange={e => setResumeText(e.target.value)}
+                        placeholder={c.placeholder}
+                        className="w-full h-64 md:h-72 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 text-sm leading-relaxed placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 resize-none"
+                      />
+                      {dragOver && (
+                        <div className="absolute inset-0 bg-blue-50/90 border-2 border-dashed border-blue-400 rounded-2xl flex items-center justify-center">
+                          <p className="text-sm font-medium text-blue-700">{c.dropHint}</p>
+                        </div>
+                      )}
+                      {fileStatus === 'success' && fileName && (
+                        <p className="text-xs text-emerald-600 mt-2">✓ {c.uploadSuccess}: {fileName}</p>
+                      )}
                     </div>
-                    <button onClick={() => setInputTab('upload')} className="mt-3 text-xs text-blue-600 hover:underline">
-                      {locale === 'zh' ? '下载后点击这里上传 →' : 'After download, click here to upload →'}
+                  )}
+
+                  {inputTab === 'upload' && (
+                    <label
+                      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={handleDrop}
+                      className={`flex flex-col items-center justify-center w-full h-64 md:h-72 bg-slate-50 border-2 border-dashed rounded-2xl cursor-pointer transition-all ${
+                        dragOver ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-blue-400 hover:bg-white'
+                      }`}
+                    >
+                      <input type="file" accept={SUPPORTED_FORMATS} onChange={handleFileInput} className="hidden" />
+                      {fileStatus === 'loading' ? (
+                        <div className="flex flex-col items-center">
+                          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
+                          <p className="text-sm text-slate-500">{fileName}</p>
+                        </div>
+                      ) : fileStatus === 'success' ? (
+                        <div className="flex flex-col items-center">
+                          <div className="text-3xl mb-2">✓</div>
+                          <p className="text-sm font-medium text-emerald-700">{c.uploadSuccess}</p>
+                          <p className="text-xs text-slate-500 mt-1">{fileName}</p>
+                          <p className="text-xs text-blue-600 mt-2">{locale === 'zh' ? '已提取文本，点击“分析”开始' : 'Text extracted. Click Analyze to continue.'}</p>
+                        </div>
+                      ) : fileStatus === 'error' ? (
+                        <div className="flex flex-col items-center">
+                          <div className="text-3xl mb-2">✗</div>
+                          <p className="text-sm text-red-600">{c.uploadError}</p>
+                          <p className="text-xs text-slate-400 mt-2">{c.dropFormats}</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center">
+                          <div className="text-4xl mb-3">📄</div>
+                          <p className="text-sm font-medium text-slate-700">{c.dropHint}</p>
+                          <p className="text-xs text-slate-400 mt-2">{c.dropFormats}</p>
+                        </div>
+                      )}
+                    </label>
+                  )}
+
+                  {inputTab === 'url' && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
+                      <div className="text-center mb-4">
+                        <div className="text-3xl mb-2">🔗</div>
+                        <p className="text-sm text-slate-700 leading-relaxed max-w-md mx-auto">{c.urlHint}</p>
+                      </div>
+                      <div className="bg-white border border-blue-200 rounded-xl p-4 text-center">
+                        <p className="text-xs font-medium text-blue-800 mb-2">{c.urlExportGuide}</p>
+                        <div className="flex justify-center gap-3 text-xs flex-wrap">
+                          <span className="px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-200 text-blue-700">1. LinkedIn</span>
+                          <span className="text-blue-400">→</span>
+                          <span className="px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-200 text-blue-700">2. {locale === 'zh' ? '更多' : 'More'}</span>
+                          <span className="text-blue-400">→</span>
+                          <span className="px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-200 text-blue-700">3. {locale === 'zh' ? '保存为PDF' : 'Save as PDF'}</span>
+                        </div>
+                        <button onClick={() => setInputTab('upload')} className="mt-3 text-xs text-blue-600 hover:underline">
+                          {locale === 'zh' ? '下载后点击这里上传 →' : 'After download, click here to upload →'}
+                        </button>
+                      </div>
+                      <div className="mt-4 pt-4 border-t border-slate-200">
+                        <p className="text-[10px] text-slate-400 text-center">
+                          {locale === 'zh'
+                            ? '也支持：BOSS直聘、猎聘、脉脉导出的简历 PDF'
+                            : 'Also supports: exported resume PDFs from BOSS, Liepin, StepStone, Xing'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                    <button
+                      onClick={handleAnalyze}
+                      disabled={!resumeText.trim()}
+                      className="flex-1 py-3 px-6 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm shadow-sm"
+                    >
+                      {c.analyze}
+                    </button>
+                    <button
+                      onClick={() => {
+                        trackEvent('homepage_input_opportunity_map', { locale });
+                        router.push('/industries');
+                      }}
+                      className="py-3 px-6 border border-slate-200 text-slate-600 rounded-xl hover:text-slate-900 hover:border-blue-300 transition-colors text-sm"
+                    >
+                      {c.skip}
                     </button>
                   </div>
 
-                  {/* Also support BOSS直聘 and other CN platforms */}
-                  <div className="mt-4 pt-4 border-t border-slate-100">
-                    <p className="text-[10px] text-slate-400 text-center">
-                      {locale === 'zh'
-                        ? '也支持：BOSS直聘、猎聘、脉脉导出的简历PDF'
-                        : 'Also supports: exported resume PDFs from BOSS, Liepin, StepStone, Xing'}
+                  <div className="pt-3 border-t border-slate-100">
+                    <p className="text-[11px] text-slate-400">
+                      {isAIAvailable() ? c.aiPowered : c.rulesPowered}
                     </p>
                   </div>
                 </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button onClick={handleAnalyze} disabled={!resumeText.trim()}
-                  className="flex-1 py-3 px-6 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm shadow-sm">
-                  {c.analyze}
-                </button>
-                <button onClick={() => router.push('/industries')}
-                  className="py-3 px-6 border border-slate-200 text-slate-500 rounded-xl hover:text-slate-900 hover:border-blue-300 transition-colors text-sm">
-                  {c.skip}
-                </button>
+              </section>
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white px-5 py-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400 mb-3">
+                  {locale === 'zh' ? '你会先得到什么' : locale === 'de' ? 'Was du zuerst bekommst' : 'What you get first'}
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    {locale === 'zh' ? '最接近你的机会方向' : locale === 'de' ? 'Die nächsten Chancencluster' : 'Nearest opportunity directions'}
+                  </div>
+                  <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    {locale === 'zh' ? '你已经具备的核心信号' : locale === 'de' ? 'Bereits vorhandene Kernsignale' : 'Core signals you already have'}
+                  </div>
+                  <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    {locale === 'zh' ? '还差的桥接技能与下一步' : locale === 'de' ? 'Brückenskills und nächster Schritt' : 'Bridge skills and next move'}
+                  </div>
+                </div>
               </div>
-              <p className="text-center text-[10px] text-slate-400">
-                {isAIAvailable() ? c.aiPowered : c.rulesPowered}
-              </p>
             </div>
           )}
 
@@ -1306,7 +1793,7 @@ export default function LandingPage() {
                     {c.editResume}
                   </button>
                 </div>
-                {/* Analysis Depth Bar — the "nerve center" */}
+                <ResultEvidencePanel skills={skills} profile={profile} locale={locale} mode={mode} precision={precision} />
                 <AnalysisDepthBar
                   precision={precision}
                   locale={locale}
@@ -1327,7 +1814,7 @@ export default function LandingPage() {
                 <FollowUpDialog
                   questions={followUps}
                   locale={locale}
-                  onAnswer={(qId, answer) => {
+                  onAnswer={(qId) => {
                     setAnsweredIds(prev => [...prev, qId]);
                   }}
                   onSkip={() => setShowFollowUp(false)}
@@ -1338,10 +1825,22 @@ export default function LandingPage() {
               <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-center">
                 <h3 className="text-base font-bold text-slate-900 mb-1">{c.ctaTitle}</h3>
                 <p className="text-sm text-slate-500 mb-3">{c.ctaSub}</p>
-                <button onClick={() => router.push('/industries')}
-                  className="py-3 px-8 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors text-sm shadow-sm">
-                  {c.ctaBtn} →
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <button onClick={() => {
+                    trackEvent('results_cta_explore', { locale });
+                    router.push('/industries');
+                  }}
+                    className="py-3 px-8 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors text-sm shadow-sm">
+                    {c.ctaBtn} →
+                  </button>
+                  <button onClick={() => {
+                    trackEvent('results_cta_consult', { locale });
+                    router.push('/consult');
+                  }}
+                    className="py-3 px-8 bg-white text-slate-700 font-semibold rounded-xl border border-slate-200 hover:border-blue-300 hover:text-slate-900 transition-colors text-sm">
+                    {locale === 'zh' ? '获取顾问评审' : locale === 'de' ? 'Beratungsreview' : 'Get advisor review'}
+                  </button>
+                </div>
               </div>
 
               {/* Career Profile (now below the fold — "about you") */}

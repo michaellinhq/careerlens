@@ -11,10 +11,11 @@ import { getSkillAiDefense } from '@/lib/superposition';
 import { getToolMapEntries } from '@/lib/toolmap';
 import type { IndustryToolMapEntry } from '@/lib/toolmap/types';
 import type { CareerRole, IndustryCareerMap } from '@/lib/career-map';
-import { groupSkillsByType, SKILL_TYPE_META, ACTIONABLE_TYPES, SECONDARY_TYPES, type SkillType } from '@/lib/skill-classifier';
+import { classifySkill, groupSkillsByType, SKILL_TYPE_META, ACTIONABLE_TYPES, SECONDARY_TYPES, type SkillType } from '@/lib/skill-classifier';
 import { calcRoleMatch } from '@/lib/resume-parser';
 import { PlanArbitrageView } from '@/components/PlanArbitrageView';
 import { getGermanTrainingLinks } from '@/lib/data-sources';
+import { trackEvent } from '@/lib/tracking';
 
 /* ─── i18n ─── */
 const ui = {
@@ -618,13 +619,15 @@ export default function PlanPage() {
 
   // Download handler
   const handleDownload = useCallback(() => {
+    trackEvent('plan_download_markdown', { locale });
     const md = generatePlanMarkdown(resolvedRoles, analysis, toolmapData, isZh);
     const filename = isZh ? `CareerLens_学习计划_${new Date().toISOString().split('T')[0]}.md` : `CareerLens_Plan_${new Date().toISOString().split('T')[0]}.md`;
     downloadMarkdown(md, filename);
-  }, [resolvedRoles, analysis, toolmapData, isZh]);
+  }, [resolvedRoles, analysis, toolmapData, isZh, locale]);
 
   // PDF export — opens a new window with a clean print-optimized view
   const handlePdfExport = useCallback(() => {
+    trackEvent('plan_export_pdf', { locale });
     const md = generatePlanMarkdown(resolvedRoles, analysis, toolmapData, isZh);
     const date = new Date().toISOString().split('T')[0];
     const title = isZh ? `CareerLens 职业透镜 — 学习计划` : `CareerLens — Career Development Plan`;
@@ -663,7 +666,44 @@ export default function PlanPage() {
   <script>window.onload=function(){window.print();}<\/script>
 </body></html>`);
     printWindow.document.close();
-  }, [resolvedRoles, analysis, toolmapData, isZh]);
+  }, [resolvedRoles, analysis, toolmapData, isZh, locale]);
+
+  const skillsByType = useMemo(() => {
+    return groupSkillsByType(analysis.prioritized);
+  }, [analysis.prioritized]);
+
+  const estimatedMonths = Math.max(1, Math.round(analysis.allMissing.size * 0.5));
+  const toolmapCoverage = analysis.prioritized.filter(s => toolmapData.has(s)).length;
+  const aiCoverage = uncoveredSkills.filter(s => aiSuggestions[s]).length;
+  const totalCoverage = toolmapCoverage + aiCoverage;
+  const focusBuckets = useMemo(() => {
+    const mandatory: string[] = [];
+    const leverage: string[] = [];
+    const optional: string[] = [];
+
+    for (const skill of analysis.prioritized) {
+      const roleCount = analysis.skillRoleCount.get(skill) || 0;
+      const skillType = classifySkill(skill);
+
+      if (ACTIONABLE_TYPES.includes(skillType) && roleCount >= Math.max(2, Math.ceil(resolvedRoles.length / 2))) {
+        mandatory.push(skill);
+        continue;
+      }
+
+      if (ACTIONABLE_TYPES.includes(skillType)) {
+        leverage.push(skill);
+        continue;
+      }
+
+      optional.push(skill);
+    }
+
+    return {
+      mandatory: mandatory.slice(0, 4),
+      leverage: leverage.slice(0, 4),
+      optional: optional.slice(0, 4),
+    };
+  }, [analysis.prioritized, analysis.skillRoleCount, resolvedRoles.length]);
 
   // Empty state
   if (resolvedRoles.length === 0) {
@@ -682,16 +722,6 @@ export default function PlanPage() {
       </div>
     );
   }
-
-  // Group skills by type
-  const skillsByType = useMemo(() => {
-    return groupSkillsByType(analysis.prioritized);
-  }, [analysis.prioritized]);
-
-  const estimatedMonths = Math.max(1, Math.round(analysis.allMissing.size * 0.5));
-  const toolmapCoverage = analysis.prioritized.filter(s => toolmapData.has(s)).length;
-  const aiCoverage = uncoveredSkills.filter(s => aiSuggestions[s]).length;
-  const totalCoverage = toolmapCoverage + aiCoverage;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -762,6 +792,48 @@ export default function PlanPage() {
                 </span>
               );
             })}
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3 mb-6">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-red-500">
+              {isZh ? '先做这些' : locale === 'de' ? 'Zuerst erledigen' : 'Do these first'}
+            </div>
+            <p className="mt-1 text-xs text-red-800 leading-5">
+              {isZh ? '多个目标岗位共同要求的桥接技能，优先补齐后转型阻力会明显下降。' : locale === 'de' ? 'Brückenskills, die mehrere Zielrollen gleichzeitig verlangen.' : 'Bridge skills shared across multiple target roles.'}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {focusBuckets.mandatory.length > 0 ? focusBuckets.mandatory.map(skill => (
+                <span key={skill} className="rounded-full border border-red-200 bg-white px-2 py-0.5 text-[10px] text-red-700">{skill}</span>
+              )) : <span className="text-xs text-red-700">{isZh ? '暂无' : locale === 'de' ? 'Noch keine' : 'None yet'}</span>}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-500">
+              {isZh ? '高杠杆技能' : locale === 'de' ? 'Hebel-Skills' : 'High-leverage skills'}
+            </div>
+            <p className="mt-1 text-xs text-blue-800 leading-5">
+              {isZh ? '补上后能提高匹配度、薪资上限或跨市场可读性的技能。' : locale === 'de' ? 'Skills mit starkem Hebel für Match, Gehalt oder Marktlesbarkeit.' : 'Skills that raise fit, salary upside, or market readability.'}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {focusBuckets.leverage.length > 0 ? focusBuckets.leverage.map(skill => (
+                <span key={skill} className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[10px] text-blue-700">{skill}</span>
+              )) : <span className="text-xs text-blue-700">{isZh ? '暂无' : locale === 'de' ? 'Noch keine' : 'None yet'}</span>}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              {isZh ? '后续加分项' : locale === 'de' ? 'Spätere Differenzierung' : 'Later differentiators'}
+            </div>
+            <p className="mt-1 text-xs text-slate-500 leading-5">
+              {isZh ? '更适合第二阶段处理，帮助你建立独特性，但不是入场门槛。' : locale === 'de' ? 'Hilfreich für Differenzierung, aber meist nicht die erste Eintrittshürde.' : 'Useful for differentiation, but usually not the first barrier to entry.'}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {focusBuckets.optional.length > 0 ? focusBuckets.optional.map(skill => (
+                <span key={skill} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600">{skill}</span>
+              )) : <span className="text-xs text-slate-500">{isZh ? '暂无' : locale === 'de' ? 'Noch keine' : 'None yet'}</span>}
+            </div>
           </div>
         </div>
 
@@ -992,10 +1064,22 @@ export default function PlanPage() {
         <div className="mt-8 bg-blue-50 border border-blue-200 rounded-2xl p-6 text-center">
           <h3 className="text-base font-bold text-slate-900 mb-1">{c.nextStep}</h3>
           <p className="text-sm text-slate-500 mb-4">{c.nextStepHint}</p>
-          <button onClick={() => router.push('/market')}
-            className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors text-sm shadow-sm">
-            {c.goToMarket} →
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button onClick={() => {
+              trackEvent('plan_go_to_market', { locale });
+              router.push('/market');
+            }}
+              className="px-8 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors text-sm shadow-sm">
+              {c.goToMarket} →
+            </button>
+            <button onClick={() => {
+              trackEvent('plan_consult_cta', { locale });
+              router.push('/consult');
+            }}
+              className="px-8 py-3 bg-white text-slate-700 font-semibold rounded-xl border border-slate-200 hover:border-blue-300 hover:text-slate-900 transition-colors text-sm">
+              {isZh ? '让我帮你校准这份计划' : locale === 'de' ? 'Plan mit Expertenreview kalibrieren' : 'Get an expert review on this plan'}
+            </button>
+          </div>
         </div>
       </main>
     </div>

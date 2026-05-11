@@ -14,3 +14,20 @@ export function trackUrl(url: string, source: 'training' | 'tool', skillId?: str
     return url;
   }
 }
+
+export function trackEvent(event: string, payload: Record<string, unknown> = {}): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const storageKey = 'careerlens_events';
+    const existing = JSON.parse(window.localStorage.getItem(storageKey) || '[]');
+    existing.push({
+      event,
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+    window.localStorage.setItem(storageKey, JSON.stringify(existing));
+  } catch {
+    // Ignore storage failures; tracking is best-effort only.
+  }
+}

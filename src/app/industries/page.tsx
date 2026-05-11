@@ -19,6 +19,7 @@ import { TransitionStories } from '@/components/TransitionStories';
 import { chinaJobs } from '@/lib/jobs-cn';
 import { germanyJobs } from '@/lib/jobs-de';
 import type { Job } from '@/lib/data';
+import { trackEvent } from '@/lib/tracking';
 
 /* ─── BLS inline data type ─── */
 interface BLSInline {
@@ -549,6 +550,15 @@ function IndustriesPage() {
     for (const role of industry.roles) map.set(role.id, calcRoleMatch(userSkills, role));
     return map;
   }, [industry, userSkills]);
+  const topIndustries = useMemo(() => {
+    return [...allIndustries]
+      .sort((a, b) => {
+        const matchDiff = (industryMatchMap.get(b.id) || 0) - (industryMatchMap.get(a.id) || 0);
+        if (matchDiff !== 0) return matchDiff;
+        return a.ranking_2026 - b.ranking_2026;
+      })
+      .slice(0, 3);
+  }, [industryMatchMap]);
 
   const maxSalary = industry
     ? Math.max(...industry.roles.flatMap(r => r.levels.map(l => market === 'CN' ? l.salary_cn.high : l.salary_de.high)))
@@ -587,8 +597,10 @@ function IndustriesPage() {
                 {isZh ? '高端制造业 · 行业图谱' : 'Advanced Manufacturing · Industry Map'}
               </p>
               <p className="text-slate-500 max-w-2xl mx-auto text-sm">
-                {isZh ? '浏览行业和岗位，将目标岗位加入购物车，生成精准行动计划'
-                  : 'Browse industries and roles. Add target roles to your cart, then build a precise action plan.'}
+                {isZh ? '先看最值得去的行业，再展开岗位细节、技能差距和落地路径。'
+                  : locale === 'de'
+                  ? 'Starte bei den wertvollsten Branchen und gehe dann in Rollen, Skill-Lücken und Umsetzungswege.'
+                  : 'Start with the highest-value industries, then drill into roles, skill gaps, and landing paths.'}
               </p>
               {userSkills.length > 0 && (
                 <p className="text-xs text-blue-600 mt-2">
@@ -597,40 +609,119 @@ function IndustriesPage() {
               )}
             </div>
 
+            <div className="mb-6 grid gap-3 md:grid-cols-3">
+              {topIndustries.map((ind, index) => {
+                const name = isZh ? ind.name_zh : locale === 'de' ? ind.name_de : ind.name;
+                const match = industryMatchMap.get(ind.id) || 0;
+                const reason = isZh
+                  ? index === 0
+                    ? '优先从这里看，通常是当前背景最容易换到更高价值岗位的方向。'
+                    : '作为第二梯队观察，适合比较岗位跨度和薪资天花板。'
+                  : locale === 'de'
+                  ? index === 0
+                    ? 'Hier zuerst anfangen: meist die beste Kombination aus Passung und Wert.'
+                    : 'Guter Vergleichsmarkt für Rollenbreite und Gehaltshebel.'
+                  : index === 0
+                  ? 'Start here first: usually the strongest mix of fit and upside.'
+                  : 'A strong comparison market for role breadth and salary leverage.';
+
+                return (
+                  <button
+                    key={ind.id}
+                    onClick={() => {
+                      trackEvent('industries_quick_pick_open', { industryId: ind.id, rank: index + 1 });
+                      setSelectedIndustry(ind.id);
+                    }}
+                    className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{ind.icon}</span>
+                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                          {isZh ? `优先级 ${index + 1}` : locale === 'de' ? `Priorität ${index + 1}` : `Priority ${index + 1}`}
+                        </span>
+                      </div>
+                      {match > 0 && (
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-bold ${matchColor(match)}`}>{match}%</span>
+                      )}
+                    </div>
+                    <h3 className="mt-3 text-sm font-bold text-slate-900">{name}</h3>
+                    <p className="mt-2 text-xs leading-relaxed text-slate-500">{reason}</p>
+                    <div className="mt-3 flex items-center gap-3 text-[11px] font-mono">
+                      <span className="text-blue-700">¥{ind.avg_salary_cn}K</span>
+                      <span className="text-blue-700">€{ind.avg_salary_de}K</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
+                {isZh ? '证据层' : locale === 'de' ? 'Evidenzschicht' : 'Evidence layer'}
+              </div>
+              <p className="mt-1 text-sm text-emerald-900">
+                {isZh
+                  ? '行业排序和岗位薪资并不是演示数字。页面会把岗位映射到 BLS、O*NET、德国 Entgeltatlas 等公开数据来源，并在岗位详情里继续展开。'
+                  : locale === 'de'
+                  ? 'Branchenranking und Rollenwerte sind nicht nur Demo-Zahlen. Rollen werden auf BLS, O*NET und den deutschen Entgeltatlas zurückgeführt und in den Detailkarten weiter belegt.'
+                  : 'Industry ranking and role values are not demo-only numbers. Roles map back to BLS, O*NET, and Germany’s Entgeltatlas, then expand further inside role details.'}
+              </p>
+            </div>
+
             <IndustryHub industries={allIndustries} locale={locale} onSelect={setSelectedIndustry} matchMap={industryMatchMap} />
 
             {/* Arbitrage Map — global scatter plot */}
             <div className="mt-8 mb-6">
-              <button
-                onClick={() => setShowArbitrage(!showArbitrage)}
-                className="w-full flex items-center justify-between bg-white border border-slate-200 rounded-xl px-5 py-3 hover:border-blue-300 hover:shadow-md transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">📊</span>
-                  <div className="text-left">
-                    <span className="text-sm font-bold text-slate-900 group-hover:text-blue-700">
-                      {isZh ? '职业套利象限图' : 'Career Arbitrage Map'}
-                    </span>
-                    <span className="block text-[11px] text-slate-500">
-                      {isZh ? '用供需张力×薪资定位最优岗位 — 200个岗位的风险溢价分析' : 'Position optimal roles by demand tension × salary — risk premium analysis of 200 roles'}
-                    </span>
+              <div className="w-full rounded-xl border border-slate-200 bg-white px-5 py-3 transition-all hover:border-blue-300 hover:shadow-md">
+                <div className="flex items-center justify-between gap-3">
+                  <button
+                    onClick={() => {
+                      trackEvent('industries_toggle_arbitrage', { nextState: !showArbitrage, market });
+                      setShowArbitrage(!showArbitrage);
+                    }}
+                    className="group flex flex-1 items-center gap-3 text-left"
+                  >
+                    <span className="text-lg">📊</span>
+                    <div>
+                      <span className="text-sm font-bold text-slate-900 group-hover:text-blue-700">
+                        {isZh ? '职业套利象限图' : 'Career Arbitrage Map'}
+                      </span>
+                      <span className="block text-[11px] text-slate-500">
+                        {isZh ? '用供需张力×薪资定位最优岗位 — 200个岗位的风险溢价分析' : 'Position optimal roles by demand tension × salary — risk premium analysis of 200 roles'}
+                      </span>
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex rounded-lg bg-slate-100 p-0.5">
+                      {(['CN', 'DE'] as const).map(m => (
+                        <button
+                          key={m}
+                          onClick={() => {
+                            trackEvent('industries_change_market', { market: m, context: 'arbitrage_map' });
+                            setMarket(m);
+                          }}
+                          className={`px-3 py-1 rounded-md text-[10px] font-medium transition-all ${market === m ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                        >
+                          {m === 'CN' ? '🇨🇳 CN' : '🇩🇪 DE'}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => {
+                        trackEvent('industries_toggle_arbitrage', { nextState: !showArbitrage, market, source: 'arrow' });
+                        setShowArbitrage(!showArbitrage);
+                      }}
+                      aria-label={showArbitrage ? 'Collapse arbitrage map' : 'Expand arbitrage map'}
+                      className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                    >
+                      <svg className={`w-4 h-4 transition-transform ${showArbitrage ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {/* Market toggle */}
-                  <div className="inline-flex bg-slate-100 rounded-lg p-0.5" onClick={e => e.stopPropagation()}>
-                    {(['CN', 'DE'] as const).map(m => (
-                      <button key={m} onClick={() => setMarket(m)}
-                        className={`px-3 py-1 rounded-md text-[10px] font-medium transition-all ${market === m ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}>
-                        {m === 'CN' ? '🇨🇳 CN' : '🇩🇪 DE'}
-                      </button>
-                    ))}
-                  </div>
-                  <svg className={`w-4 h-4 text-slate-400 transition-transform ${showArbitrage ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              </button>
+              </div>
 
               {showArbitrage && (
                 <div className="mt-3">
@@ -655,7 +746,10 @@ function IndustriesPage() {
                   const name = isZh ? ind.name_zh : locale === 'de' ? ind.name_de : ind.name;
                   const match = industryMatchMap.get(ind.id) || 0;
                   return (
-                    <button key={ind.id} onClick={() => setSelectedIndustry(ind.id)}
+                    <button key={ind.id} onClick={() => {
+                      trackEvent('industries_open_detail', { industryId: ind.id, source: 'grid_card' });
+                      setSelectedIndustry(ind.id);
+                    }}
                       className="text-left bg-white border border-slate-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-md transition-all group">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
@@ -719,6 +813,43 @@ function IndustriesPage() {
                       <span key={b} className="px-2 py-0.5 text-[10px] text-emerald-700 bg-emerald-50 rounded-full border border-emerald-200">✓ {b}</span>
                     ))}
                   </div>
+                  {industry.roles[0] && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                        {isZh ? '如何验证这个行业' : locale === 'de' ? 'Wie du diese Branche prüfst' : 'How to verify this industry'}
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                        {isZh
+                          ? '先从代表岗位的官方数据看薪资和职责，再继续展开具体岗位卡片。'
+                          : locale === 'de'
+                          ? 'Prüfe zuerst Gehalt und Aufgaben über einen repräsentativen Referenzjob, dann gehe in die Rollenkarten.'
+                          : 'Start by checking salary and role evidence on a representative anchor role, then drill into the detailed role cards.'}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {Object.values(getRoleDataLinks(industry.roles[0].soc_code, industry.roles[0].kldb_code)).map(link => (
+                          <a
+                            key={link.url}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:border-blue-300 hover:text-blue-700"
+                          >
+                            <span>{link.icon}</span>
+                            <span>{isZh ? link.label_zh : link.label}</span>
+                          </a>
+                        ))}
+                        <a
+                          href={getEntgeltatlasUrl(industry.roles[0].kldb_code)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:border-emerald-300"
+                        >
+                          <span>🇩🇪</span>
+                          <span>{isZh ? '德国官方薪资' : locale === 'de' ? 'Offizielles DE-Gehalt' : 'Official DE salary'}</span>
+                        </a>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -3,32 +3,36 @@
 import { useState } from 'react';
 import { transitionStories, type TransitionStory } from '@/lib/transition-stories';
 import type { Locale } from '@/lib/i18n';
+import { formatStorySalary } from '@/lib/format';
 
 const ui = {
   en: {
-    title: 'Real Career Transitions',
-    sub: 'People who made the leap — with real timelines and skills',
+    title: 'Representative Career Transitions',
+    sub: 'Credible transition patterns with realistic timelines and bridge skills',
     months: 'mo',
     arrow: '→',
     keySkill: 'Key skill',
+    evidence: 'Evidence',
     showMore: 'Show all stories',
     showLess: 'Show less',
   },
   de: {
-    title: 'Echte Karrierewechsel',
-    sub: 'Menschen, die den Sprung gewagt haben',
+    title: 'Repräsentative Karrierewechsel',
+    sub: 'Glaubwürdige Wechselmuster mit realistischen Zeitachsen und Brückenskills',
     months: 'Mo',
     arrow: '→',
     keySkill: 'Schlüssel-Skill',
+    evidence: 'Einordnung',
     showMore: 'Alle Geschichten zeigen',
     showLess: 'Weniger zeigen',
   },
   zh: {
-    title: '真实转行案例',
-    sub: '真人真事——真实的时间线和关键技能',
+    title: '代表性职业迁移样本',
+    sub: '不是营销口号，而是来自制造业岗位跃迁规律的代表性样本',
     months: '个月',
     arrow: '→',
     keySkill: '关键技能',
+    evidence: '证据说明',
     showMore: '查看全部案例',
     showLess: '收起',
   },
@@ -41,6 +45,7 @@ function StoryCard({ story, locale }: { story: TransitionStory; locale: Locale }
   const to = isZh ? story.to_zh : isDe ? story.to_de : story.to;
   const quote = isZh ? story.quote_zh : isDe ? story.quote_de : story.quote;
   const loc = isZh ? story.location_zh : story.location;
+  const evidence = isZh ? story.evidence_note_zh : isDe ? story.evidence_note_de : story.evidence_note;
   const c = ui[locale];
 
   return (
@@ -58,7 +63,7 @@ function StoryCard({ story, locale }: { story: TransitionStory; locale: Locale }
           <span className="font-bold text-slate-900">{story.duration_months}</span> {c.months}
         </span>
         <span className="text-slate-500">
-          {story.currency}{story.salary_before} → <span className="font-bold text-emerald-600">{story.currency}{story.salary_after}</span>
+          {formatStorySalary(story.salary_before, story.currency)} → <span className="font-bold text-emerald-600">{formatStorySalary(story.salary_after, story.currency)}</span>
         </span>
         <span className="text-slate-400">{loc}</span>
       </div>
@@ -67,6 +72,12 @@ function StoryCard({ story, locale }: { story: TransitionStory; locale: Locale }
       <div className="mb-2">
         <span className="text-[9px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
           {c.keySkill}: {story.key_skill}
+        </span>
+      </div>
+
+      <div className="mb-2">
+        <span className="text-[9px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
+          {c.evidence}: {evidence}
         </span>
       </div>
 

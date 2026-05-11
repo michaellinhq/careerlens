@@ -185,6 +185,41 @@ export function JobDetailModal({ job, locale, userSkills, onClose }: { job: Job;
     { id: 'gap' as const, label: t(locale, 'gap_tab') },
     { id: 'path' as const, label: t(locale, 'path_tab') },
   ];
+  const evidenceCopy = locale === 'zh'
+    ? {
+        title: '为什么会推荐这个岗位',
+        summary: '这个结果结合了岗位价值评分、你的技能覆盖情况，以及当前数据源里的岗位信号，不是单纯关键词命中。',
+        covered: '已覆盖技能',
+        missing: '桥接技能',
+        anchor: '数据锚点',
+        coveredHint: '与你当前背景直接重合的要求',
+        missingHint: '通常是跨过去前最值得优先补上的能力',
+        anchorHint: '薪资和岗位价值来自当前外部数据源映射',
+        score: '机会分',
+      }
+    : locale === 'de'
+    ? {
+        title: 'Warum diese Rolle erscheint',
+        summary: 'Dieses Ergebnis kombiniert Rollenwert, Skill-Abdeckung und aktuelle Marktsignale statt nur Keywords zu zählen.',
+        covered: 'Abgedeckte Skills',
+        missing: 'Brückenskills',
+        anchor: 'Datenanker',
+        coveredHint: 'Anforderungen mit direkter Passung zu deinem Profil',
+        missingHint: 'Meist die sinnvollsten Fähigkeiten für den nächsten Sprung',
+        anchorHint: 'Gehalt und Marktwert folgen der verknüpften externen Quelle',
+        score: 'Chance',
+      }
+    : {
+        title: 'Why this role appears',
+        summary: 'This result combines role value, skill coverage, and current market signals instead of relying on keyword hits alone.',
+        covered: 'Skills covered',
+        missing: 'Bridge skills',
+        anchor: 'Data anchor',
+        coveredHint: 'Requirements already aligned with your background',
+        missingHint: 'Usually the next skills that unlock the move',
+        anchorHint: 'Salary and market value are mapped from the linked external source',
+        score: 'Opportunity',
+      };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
@@ -220,6 +255,35 @@ export function JobDetailModal({ job, locale, userSkills, onClose }: { job: Job;
           {/* OVERVIEW TAB */}
           {tab === 'overview' && (
             <>
+              <div className="mb-6 rounded-2xl border border-accent/15 bg-accent/5 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="max-w-2xl">
+                    <h3 className="text-sm font-semibold text-foreground">{evidenceCopy.title}</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-muted">{evidenceCopy.summary}</p>
+                  </div>
+                  <div className="rounded-full border border-accent/15 bg-card px-3 py-1 text-[11px] font-medium text-accent-light">
+                    {evidenceCopy.score} {job.opportunity_score}/100
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border border-border bg-card p-3">
+                    <div className="text-[10px] uppercase tracking-wider text-muted">{evidenceCopy.covered}</div>
+                    <div className="mt-1 text-lg font-semibold text-foreground">{gap.have.length}</div>
+                    <div className="text-[11px] text-muted">{evidenceCopy.coveredHint}</div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-3">
+                    <div className="text-[10px] uppercase tracking-wider text-muted">{evidenceCopy.missing}</div>
+                    <div className="mt-1 text-lg font-semibold text-foreground">{gap.missing.length}</div>
+                    <div className="text-[11px] text-muted">{evidenceCopy.missingHint}</div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card p-3">
+                    <div className="text-[10px] uppercase tracking-wider text-muted">{evidenceCopy.anchor}</div>
+                    <div className="mt-1 text-sm font-semibold text-foreground">{job.source}</div>
+                    <div className="text-[11px] text-muted">{evidenceCopy.anchorHint}</div>
+                  </div>
+                </div>
+              </div>
+
               {userSkills.length > 0 && gap.missing.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                   <StatCard label={t(locale, 'months_to_ready')} value={transition.months} unit={locale === 'zh' ? '月' : 'mo'} accent="text-accent-light" />

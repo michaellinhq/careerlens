@@ -6,6 +6,7 @@ import {
   ResponsiveContainer, ReferenceLine, Cell, Tooltip,
 } from 'recharts';
 import type { CareerRole, IndustryCareerMap } from '@/lib/career-map';
+import { formatDeltaK, formatKValue } from '@/lib/format';
 
 /* ─── Helpers ─── */
 
@@ -79,7 +80,7 @@ function PlanTooltip({ active, payload, isZh, currency, unit }: {
         </div>
         <div className="flex justify-between">
           <span className="text-slate-500">{isZh ? '薪资' : 'Salary'}</span>
-          <span className="font-mono font-bold">{currency}{isAfter ? d.salary_after : d.salary_now}K{unit}</span>
+          <span className="font-mono font-bold">{formatKValue(isAfter ? d.salary_after : d.salary_now, currency)}{unit}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-500">{isZh ? '技能匹配' : 'Skill Match'}</span>
@@ -87,7 +88,7 @@ function PlanTooltip({ active, payload, isZh, currency, unit }: {
         </div>
         {isAfter && d.salary_after > d.salary_now && (
           <div className="pt-1 border-t border-slate-100 text-emerald-600 font-bold">
-            +{currency}{d.salary_after - d.salary_now}K{unit} ({isZh ? '薪资增幅' : 'salary gain'})
+            {formatDeltaK(d.salary_after - d.salary_now, currency)}{unit} ({isZh ? '薪资增幅' : 'salary gain'})
           </div>
         )}
       </div>
@@ -120,7 +121,7 @@ export function PlanArbitrageView({
     for (const { role, industry } of resolvedRoles) {
       const tension = estimateTension(role);
       const currentMatch = matchMap.get(role.id) || 0;
-      const afterMatch = Math.min(100, currentMatch + 35); // assume plan closes ~35% of gap
+      const afterMatch = Math.min(100, currentMatch + 35); // scenario assumption: focused plan closes ~35% gap
 
       const levelNowIdx = matchToLevel(currentMatch);
       const levelAfterIdx = Math.min(4, matchToLevel(afterMatch) + 1); // at least one level up
@@ -187,7 +188,7 @@ export function PlanArbitrageView({
         {totalGain > 0 && (
           <div className="text-right">
             <div className="text-lg font-bold text-emerald-600">
-              +{currency}{totalGain}K
+              {formatDeltaK(totalGain, currency)}
             </div>
             <div className="text-[10px] text-slate-400">
               ~{avgGainPct}% {isZh ? '薪资增幅' : 'salary uplift'}
@@ -210,7 +211,7 @@ export function PlanArbitrageView({
             <YAxis
               type="number" dataKey="y"
               domain={[minS, maxS]}
-              tickFormatter={v => `${currency}${v}K`}
+              tickFormatter={v => formatKValue(Number(v), currency)}
               tick={{ fontSize: 10, fill: '#94a3b8' }}
               axisLine={{ stroke: '#e2e8f0' }}
               label={{ value: isZh ? '薪资 →' : 'Salary →', position: 'insideTopLeft', offset: -5, fontSize: 10, fill: '#64748b', angle: -90 }}
@@ -275,12 +276,12 @@ export function PlanArbitrageView({
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-[10px] text-slate-400 line-through">{currency}{now.y}K</div>
-                <div className="text-xs font-bold text-emerald-600">{currency}{aft.y}K</div>
+                <div className="text-[10px] text-slate-400 line-through">{formatKValue(now.y, currency)}</div>
+                <div className="text-xs font-bold text-emerald-600">{formatKValue(aft.y, currency)}</div>
               </div>
               {gain > 0 && (
                 <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                  +{currency}{gain}K
+                  {formatDeltaK(gain, currency)}
                 </span>
               )}
             </div>
@@ -303,6 +304,11 @@ export function PlanArbitrageView({
           <span>{isZh ? '跃迁路径' : 'Leap path'}</span>
         </div>
       </div>
+      <p className="mt-2 text-[10px] text-slate-400 leading-relaxed">
+        {isZh
+          ? '场景假设：完成当前计划后，目标岗位的技能匹配度平均提升约 35%，并带来 0-1 个职级跃迁。这是用于决策对比的规划视图，不是保证薪资。'
+          : 'Scenario assumption: completing the current plan lifts role-fit by roughly 35% and may unlock a 0-1 level jump. This is a planning view for comparison, not a guaranteed salary outcome.'}
+      </p>
     </div>
   );
 }

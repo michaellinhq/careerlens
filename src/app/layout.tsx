@@ -1,33 +1,32 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { LocaleProvider } from "@/lib/locale-context";
 import { SkillsProvider } from "@/lib/skills-context";
 import { CartProvider } from "@/lib/cart-context";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CareerLens — Data-Driven Career Intelligence",
-  description: "Find high-value, low-competition careers. Reverse-engineer the path to get there. Powered by BLS, O*NET, Eurostat data.",
+  title: "CareerLens — Reverse Career Model for Manufacturing Engineers",
+  description: "Find higher-value manufacturing roles first, then reverse-engineer the shortest path to get there across China and Germany.",
   metadataBase: new URL('https://careerlens.pages.dev'),
   openGraph: {
-    title: 'CareerLens — 转行宝',
-    description: 'Data-driven career intelligence: 200+ jobs ranked, skill matching, industry learning paths.',
+    title: 'CareerLens — 职业透镜',
+    description: '制造业工程师跨行业、跨市场职业迁移引擎。',
     type: 'website',
     siteName: 'CareerLens',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'CareerLens — Data-Driven Career Intelligence',
-    description: 'Find high-value, low-competition manufacturing careers in China and Germany.',
+    title: 'CareerLens — Reverse Career Model',
+    description: 'You may be 1-3 skills away from a higher-value manufacturing role.',
   },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <LocaleProvider>
           <SkillsProvider>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { useLocale } from '@/lib/locale-context';
 import { useCart } from '@/lib/cart-context';
@@ -57,9 +57,11 @@ const ui = {
     companies: 'Companies',
     searchJobs: 'Search Jobs',
     blueCard: 'EU Blue Card Info',
-    blueCardHint: 'Germany offers EU Blue Card for qualified professionals. Min salary: €45,300/yr (€41,042 for shortage occupations like engineering).',
-    hotIndustries: 'Hot industries',
-    yourIndustries: 'Your target industries here',
+  blueCardHint: 'Germany offers EU Blue Card for qualified professionals. Min salary: €45,300/yr (€41,042 for shortage occupations like engineering).',
+  hotIndustries: 'Hot industries',
+  yourIndustries: 'Your target industries here',
+  bestCities: 'Best cities to try first',
+  fitReason: 'Why this city fits',
   },
   de: {
     title: 'Los geht\'s!',
@@ -72,6 +74,8 @@ const ui = {
     blueCardHint: 'Deutschland bietet die EU Blue Card für qualifizierte Fachkräfte. Mindestgehalt: €45.300/Jahr (€41.042 für Mangelberufe wie Ingenieurwesen).',
     hotIndustries: 'Top-Branchen',
     yourIndustries: 'Deine Zielbranchen hier',
+    bestCities: 'Beste Startstädte',
+    fitReason: 'Warum diese Stadt passt',
   },
   zh: {
     title: '开始走！',
@@ -84,6 +88,8 @@ const ui = {
     blueCardHint: '德国为高技能人才提供EU蓝卡。最低年薪要求：€45,300（工程等紧缺职业：€41,042）。',
     hotIndustries: '热门行业',
     yourIndustries: '你的目标行业在这里',
+    bestCities: '建议优先看的城市',
+    fitReason: '为什么这座城市适合你',
   },
 };
 
@@ -119,7 +125,7 @@ function CityDot({ city, locale, isSelected, onSelect, relevantIndustries }: {
 }
 
 /* ─── City Detail Panel ─── */
-function CityDetail({ city, locale, c }: { city: CityData; locale: string; c: typeof ui.en }) {
+function CityDetail({ city, locale, c, fitReason }: { city: CityData; locale: string; c: typeof ui.en; fitReason?: string }) {
   const isZh = locale === 'zh';
 
   return (
@@ -143,6 +149,13 @@ function CityDetail({ city, locale, c }: { city: CityData; locale: string; c: ty
           })}
         </div>
       </div>
+
+      {fitReason && (
+        <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <div className="text-[10px] text-emerald-700 font-semibold uppercase tracking-wider mb-1">{c.fitReason}</div>
+          <p className="text-[11px] text-emerald-800 leading-relaxed">{fitReason}</p>
+        </div>
+      )}
 
       {/* Companies */}
       <div className="mb-3">
@@ -185,6 +198,38 @@ export default function MarketPage() {
   }, [cart]);
 
   const cities = activeMap === 'CN' ? CHINA_CITIES : GERMANY_CITIES;
+  const selectedRoles = useMemo(() => {
+    return cart.map(item => {
+      const industry = allIndustries.find(entry => entry.id === item.industryId);
+      const role = industry?.roles.find(entry => entry.id === item.roleId);
+      return role ? { role, industry } : null;
+    }).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  }, [cart]);
+  const rankedCities = useMemo(() => {
+    return cities.map(city => {
+      const matchedIndustries = relevantIndustries.filter(industryId => city.industries.includes(industryId));
+      const score = matchedIndustries.length * 3 + city.companies.length * 0.5;
+      const reason = isZh
+        ? matchedIndustries.length > 0
+          ? `这座城市同时覆盖了 ${matchedIndustries.length} 个你已选目标行业，并且已有相关企业集群可直接验证机会。`
+          : '这座城市本身不是首选，但可以作为补充观察点。'
+        : locale === 'de'
+        ? matchedIndustries.length > 0
+          ? `Diese Stadt deckt ${matchedIndustries.length} deiner Zielbranchen ab und hat passende Arbeitgebercluster für schnelle Markttests.`
+          : 'Diese Stadt ist eher ergänzend als primärer Fokus geeignet.'
+        : matchedIndustries.length > 0
+        ? `This city covers ${matchedIndustries.length} of your selected target industries and already has employer clusters worth testing first.`
+        : 'This city is more useful as a secondary watchlist than a primary focus.';
+
+      return { city, matchedIndustries, score, reason };
+    }).sort((a, b) => b.score - a.score);
+  }, [cities, isZh, locale, relevantIndustries]);
+
+  useEffect(() => {
+    if (!selectedCity && rankedCities.length > 0) {
+      setSelectedCity(rankedCities[0].city);
+    }
+  }, [rankedCities, selectedCity]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -254,11 +299,46 @@ export default function MarketPage() {
           {/* Detail sidebar */}
           <div className="space-y-4">
             {selectedCity ? (
-              <CityDetail city={selectedCity} locale={locale} c={c} />
+              <CityDetail
+                city={selectedCity}
+                locale={locale}
+                c={c}
+                fitReason={rankedCities.find(entry => entry.city.id === selectedCity.id)?.reason}
+              />
             ) : (
               <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm text-center">
                 <div className="text-3xl mb-2">📍</div>
                 <p className="text-sm text-slate-500">{isZh ? '点击城市查看详情' : 'Click a city to see details'}</p>
+              </div>
+            )}
+
+            {rankedCities.length > 0 && (
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-3">{c.bestCities}</div>
+                <div className="space-y-2">
+                  {rankedCities.slice(0, 3).map(({ city, matchedIndustries, score }) => (
+                    <button
+                      key={city.id}
+                      onClick={() => setSelectedCity(city)}
+                      className={`w-full text-left rounded-xl border px-3 py-3 transition-colors ${selectedCity?.id === city.id ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-slate-50 hover:border-blue-200 hover:bg-white'}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-slate-900">
+                          {isZh ? city.name_zh : locale === 'de' ? city.name_de : city.name}
+                        </span>
+                        <span className="text-[10px] text-blue-600 font-semibold">{Math.round(score)}</span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        {matchedIndustries.length > 0
+                          ? matchedIndustries.map(industryId => {
+                              const industry = allIndustries.find(entry => entry.id === industryId);
+                              return industry ? `${industry.icon} ${isZh ? industry.name_zh : locale === 'de' ? industry.name_de : industry.name}` : '';
+                            }).filter(Boolean).join(' · ')
+                          : (isZh ? '更多像观察城市' : locale === 'de' ? 'Eher Beobachtungsstadt' : 'More watchlist than priority city')}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -289,6 +369,18 @@ export default function MarketPage() {
                     );
                   })}
                 </div>
+                {selectedRoles.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-blue-100">
+                    <div className="text-[10px] text-blue-500 mb-1">{isZh ? '已选目标岗位' : locale === 'de' ? 'Ausgewählte Zielrollen' : 'Selected target roles'}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedRoles.slice(0, 4).map(({ role }) => (
+                        <span key={role.id} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-white text-blue-700 rounded-full border border-blue-200">
+                          {isZh ? role.title_zh : locale === 'de' ? role.title_de : role.title}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
