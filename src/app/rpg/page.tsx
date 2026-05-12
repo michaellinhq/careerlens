@@ -2,8 +2,6 @@
 
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
 
 type StatTone = 'blue' | 'emerald' | 'orange' | 'rose' | 'slate';
 
@@ -52,22 +50,27 @@ const toneClasses: Record<StatTone, { text: string; bg: string; bar: string; bor
 
 function SceneHeader({ index, className = '' }: { index: number; className?: string }) {
   return (
-    <div className={`relative overflow-hidden rounded-[24px] border border-slate-200 bg-slate-100 ${className}`}>
-      <Image
-        src="/rpg/scene-strip.png"
-        alt=""
-        width={1912}
-        height={823}
-        loading="eager"
-        unoptimized
-        className="pointer-events-none absolute left-1/2 max-w-none -translate-x-1/2 object-cover"
-        style={{
-          top: `-${index * 100}%`,
-          height: '700%',
-          width: 'auto',
-        }}
-      />
+    <div
+      className={`relative overflow-hidden rounded-[24px] border border-slate-200 bg-slate-100 bg-cover bg-no-repeat ${className}`}
+      style={{
+        backgroundImage: 'url(/rpg/scene-strip-wide.png)',
+        backgroundPosition: `${(index / 6) * 100}% center`,
+        backgroundSize: '700% 100%',
+      }}
+    >
       <div className="absolute inset-0 bg-gradient-to-b from-white/0 via-white/0 to-white/75" />
+    </div>
+  );
+}
+
+function Avatar({ small = false }: { small?: boolean }) {
+  return (
+    <div className={`relative shrink-0 overflow-hidden rounded-2xl bg-blue-50 ${small ? 'h-16 w-16' : 'h-12 w-12'}`}>
+      <div className="absolute left-1/2 top-3 h-7 w-8 -translate-x-1/2 rounded-full bg-[#f2c7a5]" />
+      <div className="absolute left-1/2 top-1 h-6 w-10 -translate-x-1/2 rounded-t-full bg-slate-800" />
+      <div className="absolute bottom-0 left-1/2 h-8 w-12 -translate-x-1/2 rounded-t-2xl bg-blue-500" />
+      <div className="absolute left-[42%] top-6 h-1 w-1 rounded-full bg-slate-900" />
+      <div className="absolute right-[42%] top-6 h-1 w-1 rounded-full bg-slate-900" />
     </div>
   );
 }
@@ -141,13 +144,14 @@ function StartScreen() {
       <SceneHeader index={0} className="mx-3 mt-1 h-40" />
       <div className="px-4 pt-3">
         <h2 className="text-2xl font-black leading-tight text-slate-950">你有90天<br />拿到Offer</h2>
+        <div className="mt-2 text-[11px] font-medium text-slate-500">选择你的身份</div>
         <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="mb-3 flex rounded-full bg-slate-100 p-1 text-[11px] font-bold">
             <span className="flex-1 rounded-full bg-blue-600 py-1 text-center text-white">应届生</span>
             <span className="flex-1 py-1 text-center text-slate-400">职场转行</span>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-xl font-black text-blue-700">机</div>
+            <Avatar />
             <div>
               <div className="text-sm font-black text-slate-950">机械应届生</div>
               <div className="mt-1 text-[11px] text-slate-500">目标：自动化工程师</div>
@@ -358,9 +362,7 @@ function InterviewScreen() {
       <div className="px-4">
         <div className="mt-2 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="flex h-20 w-16 shrink-0 items-end justify-center overflow-hidden rounded-2xl bg-blue-50">
-              <div className="mb-2 h-12 w-12 rounded-full bg-slate-800" />
-            </div>
+            <SceneHeader index={5} className="h-20 w-16 shrink-0 rounded-2xl" />
             <div>
               <div className="text-sm font-black text-slate-950">技术面试官</div>
               <div className="mt-1 text-[10px] text-slate-500">自动化部门 · 资深工程师</div>
@@ -474,14 +476,10 @@ function DemoScreen({ index }: { index: number }) {
 
 export default function RpgDemoPage() {
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f7f4ef] px-4 py-8 text-slate-950">
+    <main className="min-h-screen overflow-x-hidden bg-[#f7f4ef] px-4 py-5 text-slate-950">
       <section className="mx-auto max-w-[1740px]">
-        <div className="mb-8 text-center">
-          <div className="flex justify-center gap-3">
-            <Link href="/" className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-bold text-slate-500 shadow-sm">CareerLens 实验室</Link>
-            <Link href="/rpg/login" className="rounded-full bg-blue-600 px-4 py-2 text-xs font-black text-white shadow-sm shadow-blue-200">开始试玩</Link>
-          </div>
-          <h1 className="mt-4 text-4xl font-black tracking-normal text-slate-950 md:text-5xl">
+        <div className="mb-7 text-center">
+          <h1 className="text-4xl font-black tracking-normal text-slate-950 md:text-5xl">
             90天求职生存战 <span className="ml-3 hidden md:inline">Career Sim Roguelite</span>
           </h1>
           <p className="mt-4 text-base font-medium text-slate-500 md:text-lg">现实求职模拟游戏 · 每天选择行动 · 经营资源 · 提升竞争力 · 拿到Offer</p>
