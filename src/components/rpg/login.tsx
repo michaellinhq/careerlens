@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { identityProfiles, targetRoles } from '@/lib/rpg-sim';
+import { getIndustryOption, identityProfiles, industryOptions } from '@/lib/rpg-sim';
 
 const SESSION_KEY = 'career-sim-session-v1';
 const RUN_KEY = 'career-sim-run-v1';
@@ -12,6 +12,7 @@ export interface CareerSimSession {
   name: string;
   email: string;
   identityId: string;
+  industryId: string;
   targetRoleId: string;
   cityId: string;
   createdAt: string;
@@ -24,7 +25,7 @@ export default function RpgLoginPage() {
   const [name, setName] = useState('海青');
   const [email, setEmail] = useState('demo@careerlens.cn');
   const [identityId, setIdentityId] = useState(identityProfiles[0].id);
-  const [targetRoleId, setTargetRoleId] = useState(targetRoles[0].id);
+  const [industryId, setIndustryId] = useState(industryOptions[0].id);
 
   useEffect(() => {
     const existing = window.localStorage.getItem(SESSION_KEY);
@@ -39,8 +40,9 @@ export default function RpgLoginPage() {
       name: name.trim() || '试玩玩家',
       email: email.trim() || 'demo@careerlens.cn',
       identityId,
-      targetRoleId,
-      cityId: 'suzhou',
+      industryId,
+      targetRoleId: getIndustryOption(industryId).primaryRoleId,
+      cityId: 'shanghai',
       createdAt: new Date().toISOString(),
     };
     window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -56,16 +58,16 @@ export default function RpgLoginPage() {
             返回概念预览
           </Link>
           <h1 className="mt-7 text-4xl font-black leading-tight tracking-normal text-slate-950 md:text-6xl">
-            90天求职生存战
+            先选行业，<br className="hidden md:block" />再生成路线
           </h1>
           <p className="mt-5 max-w-xl text-lg font-medium leading-8 text-slate-600">
-            不是填简历，也不是空泛测评。你每天做选择，经营现金、精力、技能、证据力和人脉，把真实职业路径变成可玩的求职训练。
+            第一版不让你在几个岗位里硬选。先选行业方向，系统再把城市、岗位、技能、项目证据和行动清单串起来。
           </p>
           <div className="mt-7 grid max-w-xl grid-cols-3 gap-3">
             {[
               ['90天', '倒计时'],
               ['6项', '资源数值'],
-              ['1条', '现实行动清单'],
+              ['16城', '市场地图'],
             ].map(([value, label]) => (
               <div key={label} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="text-2xl font-black text-blue-600">{value}</div>
@@ -79,7 +81,7 @@ export default function RpgLoginPage() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="text-sm font-black text-blue-600">CareerLens Playable Demo</div>
-              <h2 className="mt-2 text-2xl font-black text-slate-950">登录并开始试玩</h2>
+              <h2 className="mt-2 text-2xl font-black text-slate-950">登录并选择行业</h2>
             </div>
             <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">Demo</div>
           </div>
@@ -126,19 +128,25 @@ export default function RpgLoginPage() {
             </div>
 
             <div>
-              <div className="text-xs font-black text-slate-600">目标岗位</div>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {targetRoles.map((role) => (
+              <div className="text-xs font-black text-slate-600">选择行业方向</div>
+              <div className="mt-2 grid max-h-[310px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                {industryOptions.map((industry) => (
                   <button
-                    key={role.id}
+                    key={industry.id}
                     type="button"
-                    onClick={() => setTargetRoleId(role.id)}
+                    onClick={() => setIndustryId(industry.id)}
                     className={`rounded-2xl border p-3 text-left transition ${
-                      role.id === targetRoleId ? 'border-emerald-300 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-slate-50'
+                      industry.id === industryId ? 'border-emerald-300 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-slate-50'
                     }`}
                   >
-                    <div className="text-sm font-black text-slate-950">{role.titleZh}</div>
-                    <div className="mt-1 text-[11px] font-bold text-emerald-700">{role.salaryDisplay}</div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-black text-slate-950">{industry.titleZh}</div>
+                        <div className="mt-1 text-[11px] font-medium leading-4 text-slate-500">{industry.subtitleZh}</div>
+                      </div>
+                      <div className="rounded-full bg-white px-2 py-1 text-[10px] font-black text-emerald-700">需求{industry.demandScore}</div>
+                    </div>
+                    <div className="mt-2 text-[11px] font-bold text-emerald-700">{industry.signalZh}</div>
                   </button>
                 ))}
               </div>
@@ -146,7 +154,7 @@ export default function RpgLoginPage() {
           </div>
 
           <button className="mt-6 h-14 w-full rounded-2xl bg-blue-600 px-5 py-4 text-sm font-black text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700">
-            进入90天求职生存战
+            生成我的90天路线
           </button>
           <p className="mt-3 text-center text-[11px] font-medium leading-5 text-slate-400">
             当前版本为投放验证 demo：登录信息仅保存在本机浏览器。

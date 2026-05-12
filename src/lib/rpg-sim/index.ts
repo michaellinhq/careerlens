@@ -17,3 +17,13 @@ export {
   initialRun,
   resolveEventChoice,
 } from './engine';
+export {
+  getIndustryOption,
+  getMarketDemand,
+  industryOptions,
+  marketCityOptions,
+} from './options';
+export type {
+  IndustryOption,
+  MarketCityOption,
+} from './options';
