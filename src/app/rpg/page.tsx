@@ -477,8 +477,9 @@ export default function RpgDemoPage() {
     <main className="min-h-screen overflow-x-hidden bg-[#f7f4ef] px-4 py-8 text-slate-950">
       <section className="mx-auto max-w-[1740px]">
         <div className="mb-8 text-center">
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-3">
             <Link href="/" className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-bold text-slate-500 shadow-sm">CareerLens 实验室</Link>
+            <Link href="/rpg/login" className="rounded-full bg-blue-600 px-4 py-2 text-xs font-black text-white shadow-sm shadow-blue-200">开始试玩</Link>
           </div>
           <h1 className="mt-4 text-4xl font-black tracking-normal text-slate-950 md:text-5xl">
             90天求职生存战 <span className="ml-3 hidden md:inline">Career Sim Roguelite</span>
